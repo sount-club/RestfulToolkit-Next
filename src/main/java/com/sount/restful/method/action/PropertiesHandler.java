@@ -2,6 +2,7 @@ package com.sount.restful.method.action;
 
 
 import com.intellij.openapi.module.Module;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
@@ -136,7 +137,8 @@ public class PropertiesHandler {
         Properties properties = null;
         PsiFile applicationPropertiesFile = findPsiFileInModule(configFile);
         if (applicationPropertiesFile != null) {
-            properties = loadPropertiesFromText(applicationPropertiesFile.getText());
+            String text = ReadAction.compute(applicationPropertiesFile::getText);
+            properties = loadPropertiesFromText(text);
         }
         return properties;
     }
@@ -190,7 +192,7 @@ public class PropertiesHandler {
         if (applicationPropertiesFile != null) {
             Yaml yaml = new Yaml();
 
-            String yamlText = applicationPropertiesFile.getText();
+            String yamlText = ReadAction.compute(applicationPropertiesFile::getText);
             try {
                 Map<String, Object> ymlPropertiesMap = (Map<String, Object>) yaml.load(yamlText);
                 return getFlattenedMap(ymlPropertiesMap);
@@ -205,17 +207,19 @@ public class PropertiesHandler {
     }
 
 
+    @SuppressWarnings("deprecation")
     private PsiFile findPsiFileInModule(String fileName) {
-        Collection<VirtualFile> virtualFiles = FilenameIndex.getVirtualFilesByName(
-                fileName,
-                GlobalSearchScope.moduleScope(module));
+        return ReadAction.compute(() -> {
+            PsiFile[] applicationProperties = FilenameIndex.getFilesByName(module.getProject(),
+                    fileName,
+                    GlobalSearchScope.moduleScope(module));
 
-        if (!virtualFiles.isEmpty()) {
-            VirtualFile vf = virtualFiles.iterator().next();
-            return PsiManager.getInstance(module.getProject()).findFile(vf);
-        }
+            if (applicationProperties.length > 0) {
+                return applicationProperties[0];
+            }
 
-        return null;
+            return null;
+        });
     }
 
     /**

@@ -3,6 +3,7 @@ package com.sount.restful.navigator;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.lang.java.JavaLanguage;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
@@ -345,7 +346,7 @@ public class RestServiceStructure {
 
         @Override
         public void handleSelection(JTree tree) {
-            showServiceDetail(myServiceItem);
+            ReadAction.run(() -> showServiceDetail(myServiceItem));
         }
 
         private void showServiceDetail(RestServiceItem serviceItem) {
@@ -382,25 +383,27 @@ public class RestServiceStructure {
 
         @Override
         public void handleDoubleClick(JTree tree, InputEvent inputEvent) {
-            RestServiceItem serviceItem = myServiceItem;
-            PsiElement psiElement = serviceItem.getPsiElement();
+            ReadAction.run(() -> {
+                RestServiceItem serviceItem = myServiceItem;
+                PsiElement psiElement = serviceItem.getPsiElement();
 
-            if (!psiElement.isValid()) {
-                LOG.info("psiMethod is invalid: ");
-                LOG.info(psiElement.toString());
-                RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
-            }
-
-            if (psiElement.getLanguage() == JavaLanguage.INSTANCE) {
-                PsiMethod psiMethod = serviceItem.getPsiMethod();
-                OpenSourceUtil.navigate(psiMethod);
-
-            } else if (psiElement.getLanguage() == KotlinLanguage.INSTANCE) {
-                if (psiElement instanceof KtNamedFunction) {
-                    KtNamedFunction ktNamedFunction = (KtNamedFunction) psiElement;
-                    OpenSourceUtil.navigate(ktNamedFunction);
+                if (!psiElement.isValid()) {
+                    LOG.info("psiMethod is invalid: ");
+                    LOG.info(psiElement.toString());
+                    RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
                 }
-            }
+
+                if (psiElement.getLanguage() == JavaLanguage.INSTANCE) {
+                    PsiMethod psiMethod = serviceItem.getPsiMethod();
+                    OpenSourceUtil.navigate(psiMethod);
+
+                } else if (psiElement.getLanguage() == KotlinLanguage.INSTANCE) {
+                    if (psiElement instanceof KtNamedFunction) {
+                        KtNamedFunction ktNamedFunction = (KtNamedFunction) psiElement;
+                        OpenSourceUtil.navigate(ktNamedFunction);
+                    }
+                }
+            });
         }
 
         @Override
