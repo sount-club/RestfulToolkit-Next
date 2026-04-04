@@ -1,145 +1,128 @@
 # RestfulToolkit Next
 
-`RestfulToolkit Next` 是一个基于原始项目 `RestfulToolkit` 进行二次开发和重新发布的 IntelliJ IDEA 插件项目。
+<p align="center">
+  <strong>一套用于 RESTful 服务开发的辅助工具集，基于 <a href="https://github.com/mrmanzhaow/RestfulToolkit">RestfulToolkit</a> 二次开发</strong>
+</p>
 
-本仓库的目标不是简单镜像原仓库，而是在保留原有核心能力的基础上，针对新的 JetBrains Platform / IntelliJ IDEA 版本做兼容性修复、资源整理和持续维护。
+<p align="center">
+  <img src="https://img.shields.io/badge/IntelliJ-2026.1+-blue" alt="IntelliJ Platform">
+  <img src="https://img.shields.io/badge/Java-21-orange" alt="Java 21">
+  <img src="https://img.shields.io/badge/Kotlin-2.2+-purple" alt="Kotlin 2.2+">
+  <img src="https://img.shields.io/badge/License-Apache%202.0-green" alt="License">
+</p>
 
-## 二次开发说明
+---
 
-- 原始项目仓库：<https://github.com/mrmanzhaow/RestfulToolkit>
-- 本项目基于原项目代码进行二次开发。
-- 当前仓库主要面向新版 IDEA 平台做适配，并以 `RestfulToolkit Next` 的名称重新发布。
-- 本项目保留了原插件“围绕 REST 接口导航和辅助操作”的核心设计思路，同时对工程结构、图标资源和插件元数据进行了整理。
+## 功能特性
 
-如果你正在寻找原始版本，请直接访问上面的原仓库；如果你需要一个可继续维护、可面向新版 IDEA 使用的分支版本，这个仓库就是对应的延续实现。
+| 功能 | 说明 |
+|------|------|
+| **URL 跳转** | `Ctrl + \` / `Cmd + \` 输入 URL 快速定位到接口方法定义 |
+| **服务树浏览** | 通过 *RestServices* 工具窗口按项目结构浏览 REST 接口 |
+| **URL 生成** | 在接口方法上右键生成并复制完整 URL / 相对路径 URL |
+| **参数生成** | 生成并复制 Query 参数（Key-Value）和 RequestBody（JSON） |
+| **JSON 转换** | 将 Java / Kotlin 类转换为 JSON 或 Bulk Value |
+| **框架支持** | Spring MVC / Spring Boot、JAX-RS、Java、Kotlin（含 K2） |
 
-## 主要功能
+## 快速开始
 
-- 根据 URL 快速跳转到对应的 Controller / Service 声明
-- 展示 REST 服务结构树
-- 生成并复制接口 URL、完整 URL、请求参数等内容
-- 提供部分类与方法级辅助能力，例如 JSON 相关转换
-- 支持 Spring MVC / Spring Boot
-- 支持 JAX-RS
-- 支持 Java 和 Kotlin
+### 安装
 
-## 安装方式
+**方式一：从 JetBrains Marketplace 安装（推荐）**
 
-### 方式一：从打包产物安装
+> 在 IDE 中 `Settings → Plugins → Marketplace` 搜索 *RestfulToolkit Next*
 
-先执行：
+**方式二：从源码构建**
 
 ```bash
 ./gradlew buildPlugin
 ```
 
-然后在 IDE 中打开：
+在 IDE 中打开 `Settings → Plugins → ⚙️ → Install Plugin from Disk...`，选择 `build/distributions/` 下的 ZIP 包。
 
-`Settings/Preferences` -> `Plugins` -> 齿轮图标 -> `Install Plugin from Disk...`
-
-选择 `build/distributions/` 目录下生成的 ZIP 包安装即可。
-
-### 方式二：开发模式运行
-
-在项目根目录执行：
+**方式三：开发调试**
 
 ```bash
 ./gradlew runIde
 ```
 
-Gradle 会启动一个带有当前插件的测试 IDE 实例，适合本地调试和二次开发。
-
 ## 使用方式
 
-### 1. 根据 URL 快速跳转到接口定义
+### 1. 根据 URL 跳转到接口定义
 
-- 使用快捷键 `Ctrl + \` 或 `Ctrl + Alt + N`
-- macOS 下使用 `Command + \`
-- 会弹出 URL 导航面板，输入接口路径后即可跳转到对应方法
-- 如果剪贴板中已经复制了一个 HTTP URL，插件会优先把它作为预填内容
+- 快捷键：`Ctrl + \` 或 `Ctrl + Alt + N`（Windows/Linux）、`Command + \`（macOS）
+- 弹出 URL 导航面板，输入接口路径即可跳转
+- 如果剪贴板中已有 HTTP URL，会自动作为预填内容
 
-适用场景：
+### 2. 浏览 REST 服务树
 
-- 已知线上或本地接口 URL，想反查到 Controller 方法
-- 需要在大型项目中快速定位某个 REST 接口定义
-
-### 2. 查看 REST 服务树
-
-- 通过 IDE 的 `Find Action` 搜索 `Refresh Services in Project`
-- 执行后，插件会初始化右侧的 `RestServices` 工具窗口
-- 工具窗口中会按项目结构展示扫描到的 REST 接口
-- 你可以在树节点上使用右键菜单执行 `Copy Full Url` 或 `Jump to Source`
-
-适用场景：
-
-- 想按模块或接口列表浏览项目中的 REST 服务
-- 想从树结构中快速复制完整地址或回到源码
+- 通过 `Find Action` 搜索 `Refresh Services in Project` 初始化
+- 右侧 *RestServices* 工具窗口按项目结构展示 REST 接口
+- 右键节点可 `Copy Full URL` 或 `Jump to Source`
 
 ### 3. 在接口方法上使用右键菜单
 
-在 Spring Controller 方法或部分 JAX-RS 接口方法上右键，可以看到插件提供的操作项：
+在 Spring Controller 或 JAX-RS 方法上右键：
 
-- `Generate && Copy Full URL`
-- `Generate && Copy Relation URL`
-- `Generate && Copy RequestBody (JSON)`
-- `Generate && Copy Query Param (Key Value)`
+- **Generate && Copy Full URL** — 生成完整请求地址
+- **Generate && Copy Relation URL** — 生成相对路径
+- **Generate && Copy RequestBody (JSON)** — 生成请求体 JSON
+- **Generate && Copy Query Param (Key Value)** — 生成查询参数
 
-这些操作适合用于：
+### 4. JSON 转换
 
-- 快速生成调试请求地址
-- 复制请求参数到 Postman、Apifox 或其他调试工具
-- 快速查看方法参数生成效果
+在 Java / Kotlin 类上右键：
 
-### 4. 在 Java / Kotlin 类上使用 JSON 辅助功能
+- **Convert to JSON** — 转换为格式化 JSON
+- **Convert to JSON (Compressed)** — 转换为压缩 JSON
+- **Convert to Bulk Value** — 转换为 Bulk Value
 
-在 Java 类或 Kotlin 类上右键，可以使用：
+## 相比原项目的技术改进
 
-- `Convert to JSON`
-- `Convert to JSON (Compressed)`
-- `Convert to Bulk Value`
+- 全面迁移已废弃的 IntelliJ Platform API，确保与未来版本兼容：
 
-这些功能适合在定义 DTO / VO / Request Body 时快速生成示例数据。
+  | 原始 API（已废弃） | 替代方案 |
+  |---|---|
+  | `CommonBundle.message()` | `DynamicBundle` |
+  | `DataProvider.getData(String)` | `UiDataProvider.uiDataSnapshot(DataSink)` |
+  | `DumbService.runReadActionInSmartMode()` | `ReadAction.nonBlocking().inSmartMode().executeSynchronously()` |
+  | `JavaShortClassNameIndex.get()` | `PsiShortNamesCache.getClassesByName()` |
+  | `FilenameIndex.getFilesByName()` | `FilenameIndex.getVirtualFilesByName()` |
+  | `JavaAnnotationIndex.get()` | `JavaAnnotationIndex.getAnnotations()` |
+  | `StartupManager.registerPostStartupActivity()` | `DumbService.runWhenSmart()` |
+  | `DisposeAwareRunnable.create()` | 手动 `isDisposed()` 检查 |
+  | `NameUtil.buildMatcher(String, MatchingMode)` | `NameUtil.buildMatcher(String).withMatchingMode().build()` |
+  | `ChooseByNameModel.getCheckBoxMnemonic()` | 已移除 |
 
-### 5. 推荐的典型使用流程
+- 支持 Kotlin K2 编译模式
+- 构建系统升级至 IntelliJ Platform Gradle Plugin 2.x
+- 目标平台 IntelliJ IDEA 2026.1+（Build 261+）
 
-1. 在项目中打开一个 Spring Boot 或 JAX-RS 工程。
-2. 执行 `Refresh Services in Project` 初始化 `RestServices` 工具窗口。
-3. 通过服务树浏览接口，或直接使用 `Ctrl + \` / `Command + \` 按 URL 跳转。
-4. 在目标接口方法上右键，生成并复制 URL、参数或请求体。
-5. 如需构造示例 JSON，可在相关 Java / Kotlin 类上直接执行转换操作。
+## 兼容性
 
-## 当前维护方向
-
-- 适配较新的 IntelliJ IDEA / JetBrains Platform 版本
-- 修复旧版本插件在新 IDE 中的兼容性问题
-- 保持核心 REST 导航能力可用
-- 对插件名称、图标和打包产物进行重新整理，便于后续发布
+| 项目 | 要求 |
+|------|------|
+| IntelliJ IDEA | 2026.1+ (Build 261+) |
+| Java | 21 |
+| Kotlin | 2.2+ |
+| 依赖插件 | Java、Kotlin |
 
 ## 构建
 
-在项目根目录执行：
-
 ```bash
+# 编译
 ./gradlew build
-```
 
-生成可发布插件包：
-
-```bash
+# 生成可发布插件包
 ./gradlew buildPlugin
+
+# 产物位于 build/distributions/
 ```
-
-构建产物默认位于：
-
-```text
-build/distributions/
-```
-
-## 当前版本
-
-- 插件名称：`RestfulToolkit Next`
-- 当前工程产物名：`RestfulToolkit-next`
 
 ## 致谢
 
-感谢原始项目 `RestfulToolkit` 的作者和贡献者提供基础实现。本项目是在原有工作的基础上继续维护和演进的二次开发版本。
+感谢 [RestfulToolkit](https://github.com/mrmanzhaow/RestfulToolkit) 原作者 [@mrmanzhaow](https://github.com/mrmanzhaow) 及所有贡献者的开源工作。本项目在原有基础上适配新版 IntelliJ 平台并持续维护。
+
+## 许可证
+
+[Apache License 2.0](LICENSE)

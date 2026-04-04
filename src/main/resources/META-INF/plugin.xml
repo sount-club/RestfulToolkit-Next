@@ -96,7 +96,7 @@
 	<actions>
 		<!--主弹出菜单动作 - Ctrl+\ 或 Command+\ 触发 -->
 		<action id="PopupChoiceAction" class="com.sount.restful.popup.action.PopupChoiceAction"
-				icon="/icons/restService.svg">
+				text="RestfulToolkit Next" icon="/icons/restService.svg">
 			<add-to-group group-id="EditorPopupMenu" anchor="last"/>
 			<add-to-group group-id="MainMenu" anchor="last"/>
 		</action>
