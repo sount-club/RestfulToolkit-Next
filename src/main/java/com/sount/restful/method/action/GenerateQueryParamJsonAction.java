@@ -7,13 +7,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.ide.CopyPasteManager;
-import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
 import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.method.Parameter;
-import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
-import org.jetbrains.kotlin.psi.KtClassOrObject;
-import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 /**
  * 生成Request Body JSON 字符串
@@ -25,19 +21,9 @@ public class GenerateQueryParamJsonAction extends SpringAnnotatedMethodAction {
 
 		//  @RequestBody entity 生成 json
 
-		PsiMethod psiMethod = null;
-		PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
-		if (psiElement instanceof PsiMethod) {
-			psiMethod = (PsiMethod) psiElement;
-		}
-
-		if (psiElement instanceof KtNamedFunction) {
-			KtNamedFunction ktNamedFunction = (KtNamedFunction) psiElement;
-			PsiElement parentPsi = psiElement.getParent().getParent();
-			if (parentPsi instanceof KtClassOrObject) {
-				List<PsiMethod> psiMethods = LightClassUtilsKt.toLightMethods(ktNamedFunction);
-				psiMethod = psiMethods.get(0);
-			}
+		PsiMethod psiMethod = findTargetMethod(e);
+		if (psiMethod == null) {
+			return;
 		}
 
 		PsiMethodHelper psiMethodHelper = PsiMethodHelper.create(psiMethod);

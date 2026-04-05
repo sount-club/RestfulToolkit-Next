@@ -15,8 +15,6 @@ import com.sount.restful.common.PsiMethodHelper;
 import java.awt.datatransfer.StringSelection;
 import java.util.Arrays;
 
-import static com.intellij.openapi.actionSystem.CommonDataKeys.PSI_ELEMENT;
-
 /**
  * 生成并复制restful url
  * todo: 没考虑RequestMapping 多个值的情况
@@ -26,13 +24,9 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
 
     @Override
     public void actionPerformed(AnActionEvent e) {
-
         myEditor = e.getData(CommonDataKeys.EDITOR);
-        PsiElement psiElement = e.getData(PSI_ELEMENT);
-        if (!(psiElement instanceof PsiMethod)) {
-            return;
-        }
-        PsiMethod psiMethod = (PsiMethod) psiElement;
+        PsiMethod psiMethod = findTargetMethod(e);
+        if (psiMethod == null) return;
 
         //TODO: 需完善 jaxrs 支持
         String servicePath;
@@ -66,16 +60,9 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
      */
     @Override
     public void update(AnActionEvent e) {
-        PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
-
-        boolean visible = false;
-
-        if (psiElement instanceof PsiMethod) {
-            PsiMethod psiMethod = (PsiMethod) psiElement;
-            // rest method 或标注了RestController 注解
-            visible = (isRestController(psiMethod.getContainingClass()) || isRestfulMethod(psiMethod));
-        }
-
+        PsiMethod psiMethod = findTargetMethod(e);
+        boolean visible = psiMethod != null &&
+                (isRestController(psiMethod.getContainingClass()) || isRestfulMethod(psiMethod));
         setActionPresentationVisible(e, visible);
     }
 

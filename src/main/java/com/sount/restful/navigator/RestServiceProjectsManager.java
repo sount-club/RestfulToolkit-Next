@@ -16,12 +16,14 @@
 package com.sount.restful.navigator;
 
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
 import com.intellij.openapi.project.Project;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.common.ServiceHelper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -57,10 +59,11 @@ public class RestServiceProjectsManager implements PersistentStateComponent<Rest
         myState = state;
     }
 
-    public List<RestServiceProject> getServiceProjects() {
-        return ReadAction.nonBlocking(() -> ServiceHelper.buildRestServiceProjectListUsingResolver(myProject))
+    public void getServiceProjects(@NotNull java.util.function.Consumer<List<RestServiceProject>> callback) {
+        ReadAction.nonBlocking(() -> ServiceHelper.buildRestServiceProjectListUsingResolver(myProject))
                 .inSmartMode(myProject)
-                .executeSynchronously();
+                .finishOnUiThread(ModalityState.defaultModalityState(), callback)
+                .submit(AppExecutorUtil.getAppExecutorService());
     }
 
     public void forceUpdateAllProjects() {

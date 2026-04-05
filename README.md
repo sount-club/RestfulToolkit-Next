@@ -13,14 +13,24 @@
 
 ---
 
+## 1.0.1 更新
+
+- 编辑器右键菜单统一收拢到 `RestfulToolkit Next` 子菜单
+- 修复接口方法与类转换动作在 Java / Kotlin 中经常无法通过右键触发的问题
+- `RestServices` 工具窗口支持搜索过滤、请求调试、可编辑 `Headers` 与 `Body` 模式
+- 请求调试区支持 `NONE / JSON / FORM`、响应状态信息、`Format` 与 `Template` 快捷操作
+
+---
+
 ## 功能特性
 
 | 功能 | 说明 |
 |------|------|
 | **URL 跳转** | `Ctrl + \` / `Cmd + \` 输入 URL 快速定位到接口方法定义 |
-| **服务树浏览** | 通过 *RestServices* 工具窗口按项目结构浏览 REST 接口 |
+| **服务树浏览** | 通过 *RestServices* 工具窗口按项目结构浏览 REST 接口，并支持搜索过滤 |
 | **URL 生成** | 在接口方法上右键生成并复制完整 URL / 相对路径 URL |
 | **参数生成** | 生成并复制 Query 参数（Key-Value）和 RequestBody（JSON） |
+| **请求调试** | 在 *RestServices* 中直接编辑 Query、Headers、Body 并发送请求 |
 | **JSON 转换** | 将 Java / Kotlin 类转换为 JSON 或 Bulk Value |
 | **框架支持** | Spring MVC / Spring Boot、JAX-RS、Java、Kotlin（含 K2） |
 
@@ -58,11 +68,17 @@
 
 - 通过 `Find Action` 搜索 `Refresh Services in Project` 初始化
 - 右侧 *RestServices* 工具窗口按项目结构展示 REST 接口
+- 顶部搜索框支持按 URL、HTTP Method、模块名、源码位置过滤
 - 右键节点可 `Copy Full URL` 或 `Jump to Source`
+- 请求区支持：
+  - `Query / Path` 参数编辑
+  - `Headers` 编辑
+  - `Body = NONE / JSON / FORM`
+  - 查看状态码、耗时、响应大小
 
 ### 3. 在接口方法上使用右键菜单
 
-在 Spring Controller 或 JAX-RS 方法上右键：
+在 Spring Controller 或 JAX-RS 方法上右键，进入 `RestfulToolkit Next` 子菜单：
 
 - **Generate && Copy Full URL** — 生成完整请求地址
 - **Generate && Copy Relation URL** — 生成相对路径
@@ -71,11 +87,19 @@
 
 ### 4. JSON 转换
 
-在 Java / Kotlin 类上右键：
+在 Java / Kotlin 类上右键，进入 `RestfulToolkit Next` 子菜单：
 
 - **Convert to JSON** — 转换为格式化 JSON
 - **Convert to JSON (Compressed)** — 转换为压缩 JSON
 - **Convert to Bulk Value** — 转换为 Bulk Value
+
+### 5. 请求编辑说明
+
+- `Query / Path` 使用 `key : value` 格式，既可替换路径变量，也会自动拼接到 URL 查询串
+- `Headers` 使用 `key : value` 格式，发送时自动注入请求头
+- `Body = JSON` 时发送原始 JSON
+- `Body = FORM` 时发送 `application/x-www-form-urlencoded`
+- 编辑区内置 `Format` 和 `Template` 快捷操作，注释示例不会被真实发送
 
 ## 相比原项目的技术改进
 

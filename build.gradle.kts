@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sount"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -40,12 +40,11 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <p><strong>RestfulToolkit Next</strong> re-release.</p>
+            <p><strong>RestfulToolkit Next 1.0.1</strong></p>
             <ul>
-              <li>Renamed and repackaged as RestfulToolkit Next</li>
-              <li>Based on the original RestfulToolkit project for continued maintenance</li>
-              <li>Adapted for newer IntelliJ IDEA / JetBrains Platform versions</li>
-              <li>Updated plugin branding, icon assets, and project metadata</li>
+              <li>Grouped editor context-menu actions under the RestfulToolkit Next submenu</li>
+              <li>Fixed method and class right-click actions so they resolve from the current caret/context element</li>
+              <li>Improved RestServices request panel with searchable endpoints, editable headers, body modes, and response metadata</li>
             </ul>
         """.trimIndent()
     }

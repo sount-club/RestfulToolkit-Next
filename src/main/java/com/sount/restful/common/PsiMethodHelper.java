@@ -84,7 +84,7 @@ public class PsiMethodHelper {
     public Map<String, Object> getBaseTypeParameterMap() {
         List<Parameter> parameterList = getParameterList();
 
-        Map<String, Object> baseTypeParamMap = new LinkedHashMap();
+        Map<String, Object> baseTypeParamMap = new LinkedHashMap<>();
 
         // 拼接参数
         for (Parameter parameter : parameterList) {

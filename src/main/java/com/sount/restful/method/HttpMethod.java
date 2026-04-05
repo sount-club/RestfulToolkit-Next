@@ -6,7 +6,7 @@ import java.util.Map;
 public enum HttpMethod {
     GET, POST, PUT, DELETE, PATCH,HEAD,OPTIONS,TRACE,CONNECT;
 
-    private static final Map<String, HttpMethod> methodMap = new HashMap(8);
+    private static final Map<String, HttpMethod> methodMap = new HashMap<>(8);
 
 
     public static HttpMethod getByRequestMethod(String method) {
@@ -31,4 +31,3 @@ public enum HttpMethod {
     }
 
 }
-

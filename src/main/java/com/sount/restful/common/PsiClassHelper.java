@@ -397,7 +397,7 @@ public class PsiClassHelper {
 
 
     private Object handleListParam(PsiType psiType, Project project) {
-        List<Object> list = new ArrayList();
+        List<Object> list = new ArrayList<>();
         PsiClassType classType = (PsiClassType) psiType;
         PsiType[] subTypes = classType.getParameters();
         if (subTypes.length > 0) {

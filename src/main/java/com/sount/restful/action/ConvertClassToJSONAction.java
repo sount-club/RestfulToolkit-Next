@@ -1,23 +1,18 @@
 package com.sount.restful.action;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.sount.restful.common.PsiClassHelper;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.asJava.LightClassUtil;
-import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
-import org.jetbrains.kotlin.psi.KtClassOrObject;
 
 import java.awt.datatransfer.StringSelection;
 
 public class ConvertClassToJSONAction extends AbstractBaseAction {
     @Override
     public void actionPerformed(AnActionEvent e) {
-        PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
-        PsiClass psiClass = getPsiClass(psiElement);
+        PsiClass psiClass = findTargetClass(e);
 
         if(psiClass == null) return;
 
@@ -27,21 +22,11 @@ public class ConvertClassToJSONAction extends AbstractBaseAction {
 
     @Nullable
     protected PsiClass getPsiClass(PsiElement psiElement) {
-        PsiClass psiClass = null;
-        if (psiElement instanceof PsiClass) {
-            psiClass = (PsiClass) psiElement;
-
-        }else if (psiElement instanceof KtClassOrObject) {
-            if (LightClassUtil.INSTANCE.canGenerateLightClass((KtClassOrObject) psiElement)) {
-                psiClass = LightClassUtilsKt.toLightClass((KtClassOrObject) psiElement);
-            }
-        }
-        return psiClass;
+        return psiElement instanceof PsiClass ? (PsiClass) psiElement : null;
     }
 
     @Override
     public void update(AnActionEvent e) {
-        PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
-        setActionPresentationVisible(e,psiElement instanceof PsiClass || psiElement instanceof KtClassOrObject);
+        setActionPresentationVisible(e, findTargetClass(e) != null);
     }
 }

@@ -9,8 +9,18 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.Balloon;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.ui.JBColor;
 import org.jspecify.annotations.NonNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.asJava.LightClassUtil;
+import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
+import org.jetbrains.kotlin.psi.KtClassOrObject;
+import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 public abstract class AbstractBaseAction extends AnAction {
 
@@ -48,6 +58,61 @@ public abstract class AbstractBaseAction extends AnAction {
 						.show(factory.guessBestPopupLocation(myEditor), Balloon.Position.atRight);
 			}
 		});
+	}
+
+	@Nullable
+	protected PsiElement findContextPsiElement(AnActionEvent e) {
+		PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
+		if (psiElement != null) {
+			return psiElement;
+		}
+
+		PsiFile psiFile = e.getData(CommonDataKeys.PSI_FILE);
+		Editor editor = e.getData(CommonDataKeys.EDITOR);
+		if (psiFile != null && editor != null) {
+			return psiFile.findElementAt(editor.getCaretModel().getOffset());
+		}
+
+		return null;
+	}
+
+	@Nullable
+	protected PsiMethod findTargetMethod(AnActionEvent e) {
+		PsiElement psiElement = findContextPsiElement(e);
+		if (psiElement == null) {
+			return null;
+		}
+		if (psiElement instanceof PsiMethod psiMethod) {
+			return psiMethod;
+		}
+
+		KtNamedFunction ktNamedFunction = PsiTreeUtil.getParentOfType(psiElement, KtNamedFunction.class, false);
+		if (ktNamedFunction != null) {
+			java.util.List<PsiMethod> psiMethods = LightClassUtilsKt.toLightMethods(ktNamedFunction);
+			if (!psiMethods.isEmpty()) {
+				return psiMethods.get(0);
+			}
+		}
+
+		return PsiTreeUtil.getParentOfType(psiElement, PsiMethod.class, false);
+	}
+
+	@Nullable
+	protected PsiClass findTargetClass(AnActionEvent e) {
+		PsiElement psiElement = findContextPsiElement(e);
+		if (psiElement == null) {
+			return null;
+		}
+		if (psiElement instanceof PsiClass psiClass) {
+			return psiClass;
+		}
+
+		KtClassOrObject ktClassOrObject = PsiTreeUtil.getParentOfType(psiElement, KtClassOrObject.class, false);
+		if (ktClassOrObject != null && LightClassUtil.INSTANCE.canGenerateLightClass(ktClassOrObject)) {
+			return LightClassUtilsKt.toLightClass(ktClassOrObject);
+		}
+
+		return PsiTreeUtil.getParentOfType(psiElement, PsiClass.class, false);
 	}
 
 }

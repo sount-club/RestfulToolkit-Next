@@ -41,6 +41,7 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
     private ToolWindow myToolWindow;
 
     private final RestServiceProjectsManager myProjectsManager;
+    private String pendingFilterText = "";
 
     public RestServicesNavigator(Project project) {
         myProject = project;
@@ -80,6 +81,13 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
 
         myTree.setRootVisible(true);
         myTree.setShowsRootHandles(true);
+        myTree.setOpaque(true);
+        Color treeBackground = UIManager.getColor("Tree.background");
+        if (treeBackground != null) {
+            myTree.setBackground(treeBackground);
+        }
+        myTree.setRowHeight(24);
+        ToolTipManager.sharedInstance().registerComponent(myTree);
         myTree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
         myTree.setCellRenderer(new DefaultTreeCellRenderer() {
             @Override
@@ -90,6 +98,11 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
                     Icon icon = node.getIcon();
                     if (icon != null) {
                         setIcon(icon);
+                    }
+                    if (value instanceof RestServiceStructure.ServiceNode serviceNode) {
+                        setToolTipText(serviceNode.myServiceItem.getLocationText());
+                    } else {
+                        setToolTipText(node.getName());
                     }
                 }
                 return comp;
@@ -150,6 +163,13 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
         scheduleStructureRequest(() -> myStructure.update());
     }
 
+    public void setFilterText(String filterText) {
+        pendingFilterText = filterText == null ? "" : filterText;
+        if (myStructure != null) {
+            myStructure.setFilterText(pendingFilterText);
+        }
+    }
+
     private void scheduleStructureRequest(final Runnable r) {
         if (myToolWindow == null) {
             return;
@@ -170,6 +190,7 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
 
     private void initStructure() {
         myStructure = new RestServiceStructure(myProject, myProjectsManager, myTree);
+        myStructure.setFilterText(pendingFilterText);
     }
 
     private void listenForProjectsChanges() {

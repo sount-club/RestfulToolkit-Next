@@ -25,9 +25,9 @@ public class JsonUtils {
         return json;
     }
 
-    private static boolean isGsonFormat(String targetStr,Class clazz) {
+    private static boolean isGsonFormat(String targetStr, Class<? extends JsonElement> clazz) {
         try {
-            new Gson().fromJson(targetStr,clazz);
+            new Gson().fromJson(targetStr, clazz);
             return true;
         } catch(JsonSyntaxException ex) {
             return false;

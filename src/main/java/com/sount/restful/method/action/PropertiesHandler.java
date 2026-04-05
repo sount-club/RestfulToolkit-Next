@@ -2,7 +2,6 @@ package com.sount.restful.method.action;
 
 
 import com.intellij.openapi.module.Module;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
@@ -10,6 +9,7 @@ import com.intellij.psi.search.FilenameIndex;
 import com.intellij.psi.search.GlobalSearchScope;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -137,8 +137,7 @@ public class PropertiesHandler {
         Properties properties = null;
         PsiFile applicationPropertiesFile = findPsiFileInModule(configFile);
         if (applicationPropertiesFile != null) {
-            String text = ReadAction.compute(applicationPropertiesFile::getText);
-            properties = loadPropertiesFromText(text);
+            properties = loadPropertiesFromText(applicationPropertiesFile.getText());
         }
         return properties;
     }
@@ -192,11 +191,11 @@ public class PropertiesHandler {
         if (applicationPropertiesFile != null) {
             Yaml yaml = new Yaml();
 
-            String yamlText = ReadAction.compute(applicationPropertiesFile::getText);
+            String yamlText = applicationPropertiesFile.getText();
             try {
-                Map<String, Object> ymlPropertiesMap = (Map<String, Object>) yaml.load(yamlText);
+                Map<String, Object> ymlPropertiesMap = yaml.load(yamlText);
                 return getFlattenedMap(ymlPropertiesMap);
-            } catch (Exception e) { // FIXME: spring 同一个文件中配置多个环境时； yaml 格式不规范，比如包含 “---“
+            } catch (Exception e) { // FIXME: spring 同一个文件中配置多个环境时； yaml 格式不规范，比如包含 "---"
 
                 return null;
             }
@@ -207,36 +206,32 @@ public class PropertiesHandler {
     }
 
 
-    @SuppressWarnings("deprecation")
-    private PsiFile findPsiFileInModule(String fileName) {
-        return ReadAction.compute(() -> {
-            PsiFile[] applicationProperties = FilenameIndex.getFilesByName(module.getProject(),
-                    fileName,
-                    GlobalSearchScope.moduleScope(module));
-
-            if (applicationProperties.length > 0) {
-                return applicationProperties[0];
-            }
-
-            return null;
-        });
+    private @Nullable PsiFile findPsiFileInModule(String fileName) {
+        Collection<VirtualFile> virtualFiles = FilenameIndex.getVirtualFilesByName(
+                fileName,
+                GlobalSearchScope.moduleScope(module));
+        if (!virtualFiles.isEmpty()) {
+            VirtualFile vf = virtualFiles.iterator().next();
+            return PsiManager.getInstance(module.getProject()).findFile(vf);
+        }
+        return null;
     }
 
     /**
      * ref: org.springframework.beans.factory.config.YamlProcessor
      */
     protected final Map<String, Object> getFlattenedMap(Map<String, Object> source) {
-        Map<String, Object> result = new LinkedHashMap();
+        Map<String, Object> result = new LinkedHashMap<>();
         this.buildFlattenedMap(result, source, null);
         return result;
     }
 
     private void buildFlattenedMap(Map<String, Object> result, Map<String, Object> source, String path) {
-        Iterator iterator = source.entrySet().iterator();
+        Iterator<Map.Entry<String, Object>> iterator = source.entrySet().iterator();
 
         while (true) {
             while (iterator.hasNext()) {
-                Map.Entry<String, Object> entry = (Map.Entry) iterator.next();
+                Map.Entry<String, Object> entry = iterator.next();
                 String key = entry.getKey();
                 if (StringUtils.isNotBlank(path)) {
                     if (key.startsWith("[")) {
@@ -249,16 +244,12 @@ public class PropertiesHandler {
                 Object value = entry.getValue();
                 if (value instanceof String) {
                     result.put(key, value);
-                } else if (value instanceof Map) {
-                    Map<String, Object> map = (Map) value;
-                    this.buildFlattenedMap(result, map, key);
-                } else if (value instanceof Collection) {
-                    Collection<Object> collection = (Collection) value;
+                } else if (value instanceof Map<?, ?> mapValue) {
+                    this.buildFlattenedMap(result, toStringObjectMap(mapValue), key);
+                } else if (value instanceof Collection<?> collection) {
                     int count = 0;
-                    Iterator var10 = collection.iterator();
 
-                    while (var10.hasNext()) {
-                        Object object = var10.next();
+                    for (Object object : collection) {
                         this.buildFlattenedMap(result, Collections.singletonMap("[" + count++ + "]", object), key);
                     }
                 } else {
@@ -268,6 +259,14 @@ public class PropertiesHandler {
 
             return;
         }
+    }
+
+    private Map<String, Object> toStringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 
 }

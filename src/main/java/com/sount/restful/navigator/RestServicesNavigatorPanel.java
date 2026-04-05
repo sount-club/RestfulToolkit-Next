@@ -11,14 +11,17 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.openapi.ui.Splitter;
 import com.intellij.ui.PopupHandler;
+import com.intellij.ui.SearchTextField;
 import com.intellij.ui.ScrollPaneFactory;
+import com.intellij.util.ui.JBUI;
 import com.sount.restful.navigation.action.RestServiceItem;
 import com.sount.utils.RestServiceDataKeys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.ArrayList;
@@ -33,6 +36,7 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
     RestServiceDetail myRestServiceDetail;
 
     private Splitter servicesContentPaneSplitter;
+    private SearchTextField searchField;
 
     public RestServicesNavigatorPanel(Project project, JTree tree) {
         super(true, true);
@@ -48,21 +52,51 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
                 true);
         setToolbar(actionToolbar.getComponent());
 
-        Color gray = new Color(36, 38, 39);
-
-        myTree.setBorder(BorderFactory.createLineBorder(gray));
+        myTree.setBorder(JBUI.Borders.empty());
         JScrollPane scrollPane = ScrollPaneFactory.createScrollPane(myTree);
-        scrollPane.setBorder(BorderFactory.createLineBorder(Color.RED));
+        scrollPane.setBorder(JBUI.Borders.empty());
+        scrollPane.setViewportBorder(JBUI.Borders.empty());
+        scrollPane.getViewport().setBackground(myTree.getBackground());
 
         servicesContentPaneSplitter = new Splitter(true, 0.5f);
         servicesContentPaneSplitter.setShowDividerControls(true);
         servicesContentPaneSplitter.setDividerWidth(10);
-        servicesContentPaneSplitter.setBorder(BorderFactory.createLineBorder(Color.RED));
+        servicesContentPaneSplitter.setBorder(JBUI.Borders.empty());
 
         servicesContentPaneSplitter.setFirstComponent(scrollPane);
         servicesContentPaneSplitter.setSecondComponent(myRestServiceDetail);
 
-        setContent(servicesContentPaneSplitter);
+        JPanel contentPanel = new JPanel(new BorderLayout(0, JBUI.scale(8)));
+        contentPanel.setBorder(JBUI.Borders.empty(8));
+        contentPanel.setOpaque(false);
+
+        searchField = new SearchTextField();
+        searchField.getTextEditor().putClientProperty("JTextField.placeholderText", "Filter by URL, method, module, or source");
+        searchField.getTextEditor().getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                syncFilter();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                syncFilter();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                syncFilter();
+            }
+
+            private void syncFilter() {
+                RestServicesNavigator.getInstance(myProject).setFilterText(searchField.getText());
+            }
+        });
+
+        contentPanel.add(searchField, BorderLayout.NORTH);
+        contentPanel.add(servicesContentPaneSplitter, BorderLayout.CENTER);
+
+        setContent(contentPanel);
 
         // popup
         myTree.addMouseListener(new PopupHandler() {

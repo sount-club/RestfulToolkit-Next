@@ -3,12 +3,12 @@ package com.sount.restful.navigator;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.lang.java.JavaLanguage;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiMethod;
-import com.intellij.util.OpenSourceUtil;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.common.KtFunctionHelper;
 import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.common.ToolkitIcons;
@@ -30,10 +30,11 @@ import java.awt.event.InputEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
-import java.util.Enumeration;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class RestServiceStructure {
     public static final Logger LOG = Logger.getInstance(RestServiceStructure.class);
@@ -45,6 +46,10 @@ public class RestServiceStructure {
     private DefaultTreeModel myTreeModel;
     private RootNode myRoot;
     private int serviceCount = 0;
+    private int totalServiceCount = 0;
+    private final AtomicLong detailRequestSequence = new AtomicLong();
+    private List<RestServiceProject> allProjects = Collections.emptyList();
+    private String filterText = "";
 
     public RestServiceStructure(Project project,
                                 RestServiceProjectsManager projectsManager,
@@ -113,9 +118,8 @@ public class RestServiceStructure {
         if (treePaths != null) {
             for (TreePath treePath : treePaths) {
                 Object node = treePath.getLastPathComponent();
-                if (nodeClass == null || nodeClass.isInstance(node)) {
-                    //noinspection unchecked
-                    filtered.add((T) node);
+                if (nodeClass.isInstance(node)) {
+                    filtered.add(nodeClass.cast(node));
                 }
             }
         }
@@ -123,33 +127,68 @@ public class RestServiceStructure {
     }
 
     public void update() {
-        List<RestServiceProject> projects = RestServiceProjectsManager.getInstance(myProject).getServiceProjects();
-        updateProjects(projects);
+        RestServiceProjectsManager.getInstance(myProject).getServiceProjects(this::updateProjects);
     }
 
     public void updateProjects(List<RestServiceProject> projects) {
+        allProjects = new ArrayList<>(projects);
+        totalServiceCount = allProjects.stream().mapToInt(project -> project.serviceItems.size()).sum();
+        rebuildTree();
+    }
+
+    public void setFilterText(String filterText) {
+        this.filterText = filterText == null ? "" : filterText.trim();
+        rebuildTree();
+    }
+
+    private void rebuildTree() {
         serviceCount = 0;
 
         myProjectToNodeMapping.clear();
         myRoot.projectNodes.clear();
 
-        for (RestServiceProject each : projects) {
-            serviceCount += each.serviceItems.size();
-            ProjectNode node = new ProjectNode(myRoot, each);
+        for (RestServiceProject each : allProjects) {
+            ProjectNode node = new ProjectNode(myRoot, each, filterServices(each.serviceItems));
+            if (node.serviceNodes.isEmpty()) {
+                continue;
+            }
+            serviceCount += node.serviceNodes.size();
             myRoot.projectNodes.add(node);
             myProjectToNodeMapping.put(each, node);
         }
 
-        myTreeModel.nodeChanged(myRoot);
-        for (int i = 0; i < myRoot.getChildCount(); i++) {
-            myTreeModel.nodeChanged(myRoot.getChildAt(i));
+        if (myTree.getSelectionPath() == null) {
+            resetRestServiceDetail();
         }
+
+        myTreeModel.reload();
+        expandRoot();
+    }
+
+    private List<RestServiceItem> filterServices(List<RestServiceItem> serviceItems) {
+        if (filterText.isBlank()) {
+            return serviceItems;
+        }
+
+        List<RestServiceItem> filtered = new ArrayList<>();
+        for (RestServiceItem serviceItem : serviceItems) {
+            if (serviceItem.matches(filterText)) {
+                filtered.add(serviceItem);
+            }
+        }
+        return filtered;
     }
 
     private void resetRestServiceDetail() {
         myRestServiceDetail.resetRequestTabbedPane();
+        myRestServiceDetail.setEndpointSummary("Select an endpoint to inspect and test");
+        myRestServiceDetail.setSourceValue(filterText.isBlank()
+                ? "Search by URL, method, module, or source"
+                : "Filter: " + filterText);
+        myRestServiceDetail.setBodyTypeValue("NONE");
         myRestServiceDetail.setMethodValue(HttpMethod.GET.name());
         myRestServiceDetail.setUrlValue("URL");
+        myRestServiceDetail.clearResponseMeta();
         myRestServiceDetail.initTab();
     }
 
@@ -227,8 +266,13 @@ public class RestServiceStructure {
 
         @Override
         public String getName() {
-            String s = "Found %d services ";
-            return serviceCount > 0 ? String.format(s, serviceCount) : "No services";
+            if (totalServiceCount == 0) {
+                return "No services";
+            }
+            if (filterText.isBlank()) {
+                return String.format("Found %d services", totalServiceCount);
+            }
+            return String.format("Showing %d of %d services", serviceCount, totalServiceCount);
         }
 
         @Override
@@ -261,11 +305,11 @@ public class RestServiceStructure {
         List<ServiceNode> serviceNodes = new ArrayList<>();
         RestServiceProject myProject;
 
-        public ProjectNode(BaseSimpleNode parent, RestServiceProject project) {
+        public ProjectNode(BaseSimpleNode parent, RestServiceProject project, List<RestServiceItem> visibleItems) {
             super(project.getModuleName(), true);
             myProject = project;
             setNodeIcon(ToolkitIcons.MODULE);
-            updateServiceNodes(project.serviceItems);
+            updateServiceNodes(visibleItems);
         }
 
         private void updateServiceNodes(List<RestServiceItem> serviceItems) {
@@ -279,7 +323,7 @@ public class RestServiceStructure {
 
         @Override
         public String getName() {
-            return myProject.getModuleName();
+            return myProject.getModuleName() + " (" + serviceNodes.size() + ")";
         }
 
         @Override
@@ -346,16 +390,24 @@ public class RestServiceStructure {
 
         @Override
         public void handleSelection(JTree tree) {
-            ReadAction.run(() -> showServiceDetail(myServiceItem));
-        }
-
-        private void showServiceDetail(RestServiceItem serviceItem) {
+            long requestId = detailRequestSequence.incrementAndGet();
             myRestServiceDetail.resetRequestTabbedPane();
 
-            String method = serviceItem.getMethod() != null ? String.valueOf(serviceItem.getMethod()) : HttpMethod.GET.name();
-            myRestServiceDetail.setMethodValue(method);
-            myRestServiceDetail.setUrlValue(serviceItem.getFullUrl());
+            ReadAction.nonBlocking(() -> buildServiceDetailState(myServiceItem))
+                    .inSmartMode(myProject)
+                    .expireWith(myProject)
+                    .finishOnUiThread(ModalityState.defaultModalityState(), detailState -> {
+                        if (requestId != detailRequestSequence.get()) {
+                            return;
+                        }
+                        showServiceDetail(detailState);
+                    })
+                    .submit(AppExecutorUtil.getAppExecutorService());
+        }
 
+        private ServiceDetailState buildServiceDetailState(RestServiceItem serviceItem) {
+            String method = serviceItem.getMethod() != null ? String.valueOf(serviceItem.getMethod()) : HttpMethod.GET.name();
+            String fullUrl = serviceItem.getFullUrl();
             String requestParams = "";
             String requestBodyJson = "";
             PsiElement psiElement = serviceItem.getPsiElement();
@@ -374,36 +426,43 @@ public class RestServiceStructure {
 
             }
 
-            myRestServiceDetail.addRequestParamsTab(requestParams);
+            return new ServiceDetailState(method, fullUrl, serviceItem.getName(),
+                    serviceItem.getLocationText(), requestParams, requestBodyJson);
+        }
 
-            if (StringUtils.isNotBlank(requestBodyJson)) {
-                myRestServiceDetail.addRequestBodyTabPanel(requestBodyJson);
+        private void showServiceDetail(ServiceDetailState detailState) {
+            myRestServiceDetail.resetRequestTabbedPane();
+            myRestServiceDetail.setEndpointSummary(detailState.method() + " " + detailState.displayName());
+            myRestServiceDetail.setSourceValue(detailState.sourceLocation());
+            myRestServiceDetail.setMethodValue(detailState.method());
+            myRestServiceDetail.setUrlValue(detailState.fullUrl());
+            myRestServiceDetail.setBodyTypeValue(StringUtils.isNotBlank(detailState.requestBodyJson()) ? "JSON" : "NONE");
+            myRestServiceDetail.clearResponseMeta();
+            myRestServiceDetail.initTab();
+            myRestServiceDetail.addRequestParamsTab(detailState.requestParams());
+
+            if (StringUtils.isNotBlank(detailState.requestBodyJson())) {
+                myRestServiceDetail.addRequestBodyTabPanel(detailState.requestBodyJson());
             }
         }
 
         @Override
         public void handleDoubleClick(JTree tree, InputEvent inputEvent) {
-            ReadAction.run(() -> {
-                RestServiceItem serviceItem = myServiceItem;
-                PsiElement psiElement = serviceItem.getPsiElement();
+            RestServiceItem serviceItem = myServiceItem;
+            PsiElement psiElement = serviceItem.getPsiElement();
 
-                if (!psiElement.isValid()) {
-                    LOG.info("psiMethod is invalid: ");
-                    LOG.info(psiElement.toString());
-                    RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
-                }
+            if (!psiElement.isValid()) {
+                LOG.info("psiMethod is invalid: ");
+                LOG.info(psiElement.toString());
+                RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
+                return;
+            }
 
-                if (psiElement.getLanguage() == JavaLanguage.INSTANCE) {
-                    PsiMethod psiMethod = serviceItem.getPsiMethod();
-                    OpenSourceUtil.navigate(psiMethod);
-
-                } else if (psiElement.getLanguage() == KotlinLanguage.INSTANCE) {
-                    if (psiElement instanceof KtNamedFunction) {
-                        KtNamedFunction ktNamedFunction = (KtNamedFunction) psiElement;
-                        OpenSourceUtil.navigate(ktNamedFunction);
-                    }
-                }
-            });
+            if ((psiElement.getLanguage() == JavaLanguage.INSTANCE
+                    || (psiElement.getLanguage() == KotlinLanguage.INSTANCE && psiElement instanceof KtNamedFunction))
+                    && serviceItem.canNavigate()) {
+                serviceItem.navigate(true);
+            }
         }
 
         @Override
@@ -412,5 +471,13 @@ public class RestServiceStructure {
         protected String getMenuId() {
             return "Toolkit.NavigatorServiceMenu";
         }
+    }
+
+    private record ServiceDetailState(String method,
+                                      String fullUrl,
+                                      String displayName,
+                                      String sourceLocation,
+                                      String requestParams,
+                                      String requestBodyJson) {
     }
 }

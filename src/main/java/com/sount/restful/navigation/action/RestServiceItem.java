@@ -17,6 +17,7 @@ import org.jetbrains.kotlin.psi.KtClass;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 import javax.swing.*;
+import java.util.Locale;
 
 //RequestMappingNavigationItem
 public class RestServiceItem implements NavigationItem {
@@ -75,7 +76,7 @@ public class RestServiceItem implements NavigationItem {
 
     @Override
     public boolean canNavigate() {
-        return navigationElement.canNavigate();
+        return navigationElement != null && navigationElement.canNavigate();
     }
 
     @Override
@@ -86,8 +87,15 @@ public class RestServiceItem implements NavigationItem {
 
     /*匹配*/
     public boolean matches(String queryText) {
-        String pattern = queryText;
-        if (pattern.equals("/")) return true;
+        String pattern = queryText == null ? "" : queryText.trim();
+        if (pattern.isEmpty() || pattern.equals("/")) return true;
+
+        String normalizedPattern = pattern.toLowerCase(Locale.ROOT);
+        if (containsIgnoreCase(getMethodText(), normalizedPattern)
+                || containsIgnoreCase(getLocationText(), normalizedPattern)
+                || containsIgnoreCase(getModuleName(), normalizedPattern)) {
+            return true;
+        }
 
         MinusculeMatcher matcher = NameUtil.buildMatcher("*" + pattern)
                 .withMatchingMode(MatchingMode.IGNORE_CASE)
@@ -193,5 +201,31 @@ public class RestServiceItem implements NavigationItem {
 
     public PsiElement getPsiElement() {
         return psiElement;
+    }
+
+    public String getMethodText() {
+        return method != null ? method.name() : requestMethod;
+    }
+
+    public String getModuleName() {
+        return module != null ? module.getName() : "";
+    }
+
+    public String getLocationText() {
+        if (psiElement instanceof PsiMethod methodElement) {
+            return methodElement.getContainingClass().getName() + "#" + methodElement.getName();
+        }
+        if (psiElement instanceof KtNamedFunction ktNamedFunction) {
+            String className = "";
+            if (psiElement.getParent() != null && psiElement.getParent().getParent() instanceof KtClass ktClass) {
+                className = ktClass.getName();
+            }
+            return (className == null ? "" : className) + "#" + ktNamedFunction.getName();
+        }
+        return "";
+    }
+
+    private boolean containsIgnoreCase(String text, String expectedLowerCase) {
+        return text != null && text.toLowerCase(Locale.ROOT).contains(expectedLowerCase);
     }
 }
