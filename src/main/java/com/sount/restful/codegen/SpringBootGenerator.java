@@ -29,26 +29,23 @@ public class SpringBootGenerator extends AnAction {
 
     @Override
     public void actionPerformed(AnActionEvent e) {
+        project = e.getProject();
+        if (project == null) {
+            return;
+        }
+
         Editor editor = e.getData(CommonDataKeys.EDITOR);
-
-//        e.getData(CommonDataKeys.VIRTUAL_FILE) ;
-// instanceof VirtualDirectoryImpl file://E:/project/module/src/test
-        String currentPathName = e.getData(CommonDataKeys.VIRTUAL_FILE).getName();
-
-        PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
-
-        //  instanceof PsiJavaDirectoryImpl
-        // PsiDirectory:E:\project\module\src\test
-
-//        e.getData(PlatformDataKeys.NAVIGATABLE); 同 PSI_ELEMENT
-
-//        e.getData(PlatformDataKeys.SEARCH_INPUT_TEXT)
-//        e.getData(PlatformDataKeys.e.getData(PlatformDataKeys.SPEED_SEARCH_COMPONENT))
-
         if (editor == null) {
             return;
         }
+
+        VirtualFile virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        if (virtualFile == null) {
+            return;
+        }
+        String currentPathName = virtualFile.getName();
         String content = editor.getDocument().getText();
+        PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
 
 
 

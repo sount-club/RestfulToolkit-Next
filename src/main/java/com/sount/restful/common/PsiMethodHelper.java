@@ -156,7 +156,9 @@ public class PsiMethodHelper {
 
             String paramType = psiParameter.getType().getCanonicalText();
             if (paramType.equals("javax.servlet.http.HttpServletRequest")
-                    || paramType.equals("javax.servlet.http.HttpServletResponse"))
+                    || paramType.equals("javax.servlet.http.HttpServletResponse")
+                    || paramType.equals("jakarta.servlet.http.HttpServletRequest")
+                    || paramType.equals("jakarta.servlet.http.HttpServletResponse"))
                 continue;
             //必传参数 @RequestParam
             PsiModifierList modifierList = psiParameter.getModifierList();

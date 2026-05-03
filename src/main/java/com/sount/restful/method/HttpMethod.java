@@ -17,11 +17,10 @@ public enum HttpMethod {
         String[] split = method.split("\\.");
 
         if (split.length > 1) {
-            method = split[split.length - 1].toUpperCase();
-            return HttpMethod.valueOf(method);
+            method = split[split.length - 1];
         }
 
-        return HttpMethod.valueOf(method.toUpperCase());
+        return methodMap.get(method.toUpperCase());
     }
 
     static {

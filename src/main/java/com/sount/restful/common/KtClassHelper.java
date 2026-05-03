@@ -17,7 +17,7 @@ import java.util.Collections;
 public class KtClassHelper {
     KtClass psiClass;
 
-    private static int autoCorrelationCount = 0; //标记实体递归
+    private int autoCorrelationCount = 0; //标记实体递归
     private int listIterateCount = 0; //标记List递归
     private Module myModule;
 

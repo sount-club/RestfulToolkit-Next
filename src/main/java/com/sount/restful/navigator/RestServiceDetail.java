@@ -234,25 +234,7 @@ public class RestServiceDetail extends JBPanel/*WithEmptyText*/ {
 		requestTabbedPane.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
-				System.out.println(e.getClickCount());
 				super.mouseClicked(e);
-			}
-
-			@Override
-			public void mousePressed(MouseEvent e) {
-				super.mousePressed(e);
-				urlField.selectAll();
-			}
-
-			@Override
-			public void mouseEntered(MouseEvent e) {
-				super.mousePressed(e);
-				urlField.selectAll();
-			}
-
-			@Override
-			public void mouseMoved(MouseEvent e) {
-				super.mousePressed(e);
 				urlField.selectAll();
 			}
 		});

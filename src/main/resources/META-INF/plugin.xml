@@ -74,12 +74,6 @@
 	<!-- Extensions defined by the plugin.
 		 Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
 	<extensions defaultExtensionNs="com.intellij">
-	</extensions>
-	<extensions defaultExtensionNs="org.jetbrains.kotlin">
-		<supportsKotlinPluginMode supportsK2="true"/>
-	</extensions>
-
-	<extensions defaultExtensionNs="com.intellij">
 		<projectService serviceImplementation="com.sount.restful.navigation.action.GotoRequestMappingConfiguration"/>
 		<projectService serviceImplementation="com.sount.restful.navigator.RestServiceProjectsManager"/>
 		<projectService serviceImplementation="com.sount.restful.navigator.RestServicesNavigator"/>
@@ -89,6 +83,10 @@
 					icon="/icons/restService.svg"
 					canCloseContents="false"
 					factoryClass="com.sount.restful.navigator.RestServicesToolWindowFactory"/>
+	</extensions>
+
+	<extensions defaultExtensionNs="org.jetbrains.kotlin">
+		<supportsKotlinPluginMode supportsK2="true"/>
 	</extensions>
 
 	<!-- Actions defined by the plugin -->

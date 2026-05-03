@@ -4,6 +4,7 @@ import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.module.Module;
 import com.intellij.pom.Navigatable;
+import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.codeStyle.MinusculeMatcher;
@@ -213,7 +214,9 @@ public class RestServiceItem implements NavigationItem {
 
     public String getLocationText() {
         if (psiElement instanceof PsiMethod methodElement) {
-            return methodElement.getContainingClass().getName() + "#" + methodElement.getName();
+            PsiClass containingClass = methodElement.getContainingClass();
+            String className = containingClass != null ? containingClass.getName() : "";
+            return className + "#" + methodElement.getName();
         }
         if (psiElement instanceof KtNamedFunction ktNamedFunction) {
             String className = "";
