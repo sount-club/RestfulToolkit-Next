@@ -29,6 +29,7 @@ import java.util.Map;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.PATH_VARIABLE;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_BODY;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_PARAM;
+import static com.sount.restful.annotations.SpringControllerAnnotation.REST_CONTROLLER;
 
 /**
  * PsiMethod处理类
@@ -182,12 +183,29 @@ public class PsiMethodHelper {
                 parameterList.add(parameter);
             }
 
+            if (!requestBodyFound && pathVariableAnno == null && requestParamAnno == null && isImplicitRestControllerBodyParameter(psiParameter)) {
+                requestBodyFound = true;
+            }
+
             if (pathVariableAnno == null && requestParamAnno == null) {
                 Parameter parameter = new Parameter(paramType, paramName).requestBodyFound(requestBodyFound);
                 parameterList.add(parameter);
             }
         }
         return parameterList;
+    }
+
+    private boolean isImplicitRestControllerBodyParameter(@NotNull PsiParameter psiParameter) {
+        PsiClass containingClass = psiMethod.getContainingClass();
+        if (containingClass == null || containingClass.getModifierList() == null) {
+            return false;
+        }
+        if (containingClass.getModifierList().findAnnotation(REST_CONTROLLER.getQualifiedName()) == null) {
+            return false;
+        }
+
+        String shortTypeName = psiParameter.getType().getPresentableText();
+        return PsiClassHelper.getJavaBaseTypeDefaultValue(shortTypeName) == null;
     }
 
     public String getAnnotationValue(PsiAnnotation annotation) {

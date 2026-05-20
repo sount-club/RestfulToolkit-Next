@@ -16,19 +16,21 @@
 package com.sount.restful.navigator;
 
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
+import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import com.intellij.util.concurrency.AppExecutorUtil;
-import com.sount.restful.common.ServiceHelper;
+import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.search.EndpointIndex;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @State(name = "RestServiceProjectsManager", storages = {@Storage(StoragePathMacros.WORKSPACE_FILE)})
 public class RestServiceProjectsManager implements PersistentStateComponent<RestServicesNavigatorState>, Disposable {
@@ -60,12 +62,30 @@ public class RestServiceProjectsManager implements PersistentStateComponent<Rest
     }
 
     public void getServiceProjects(@NotNull java.util.function.Consumer<List<RestServiceProject>> callback) {
-        ReadAction.nonBlocking(() -> ServiceHelper.buildRestServiceProjectListUsingResolver(myProject))
-                .inSmartMode(myProject)
-                .finishOnUiThread(ModalityState.defaultModalityState(), callback)
-                .submit(AppExecutorUtil.getAppExecutorService());
+        // Use cached index; group items by module into RestServiceProject list
+        List<RestServiceItem> items = EndpointIndex.getInstance(myProject).getItems();
+        List<RestServiceProject> projects = groupByModule(items);
+        callback.accept(projects);
     }
 
     public void forceUpdateAllProjects() {
+        EndpointIndex.getInstance(myProject).refresh();
+    }
+
+    private static @NotNull List<RestServiceProject> groupByModule(@NotNull List<RestServiceItem> items) {
+        Map<Module, List<RestServiceItem>> grouped = new LinkedHashMap<>();
+        for (RestServiceItem item : items) {
+            Module module = item.getModule();
+            if (module != null) {
+                grouped.computeIfAbsent(module, k -> new ArrayList<>()).add(item);
+            }
+        }
+        List<RestServiceProject> projects = new ArrayList<>();
+        for (Map.Entry<Module, List<RestServiceItem>> entry : grouped.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                projects.add(new RestServiceProject(entry.getKey(), entry.getValue()));
+            }
+        }
+        return projects;
     }
 }

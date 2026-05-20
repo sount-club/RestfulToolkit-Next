@@ -2,6 +2,7 @@ package com.sount.restful.common.resolver;
 
 
 import com.intellij.openapi.module.Module;
+import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -15,6 +16,24 @@ import java.util.List;
 public abstract class BaseServiceResolver implements ServiceResolver{
     Module myModule;
     Project myProject;
+
+    @NotNull
+    public static List<RestServiceItem> findAllEndpoints(@NotNull Module module) {
+        List<RestServiceItem> items = new ArrayList<>();
+        for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(module), new JaxrsResolver(module)}) {
+            items.addAll(resolver.findAllSupportedServiceItemsInModule());
+        }
+        return items;
+    }
+
+    @NotNull
+    public static List<RestServiceItem> findAllEndpoints(@NotNull Project project) {
+        List<RestServiceItem> items = new ArrayList<>();
+        for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(project), new JaxrsResolver(project)}) {
+            items.addAll(resolver.findAllSupportedServiceItemsInProject());
+        }
+        return items;
+    }
 
     @Override
     public List<RestServiceItem> findAllSupportedServiceItemsInModule() {
@@ -83,6 +102,11 @@ public abstract class BaseServiceResolver implements ServiceResolver{
         RestServiceItem item = new RestServiceItem(psiMethod, requestMapping.getMethod(), requestPath);
         if (myModule != null) {
             item.setModule(myModule);
+        } else {
+            Module module = ModuleUtil.findModuleForPsiElement(psiMethod);
+            if (module != null) {
+                item.setModule(module);
+            }
         }
         return item;
     }

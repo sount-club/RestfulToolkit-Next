@@ -14,6 +14,9 @@ import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.search.SearchEngine;
+import com.sount.restful.search.SearchQuery;
+import com.sount.restful.search.SearchResult;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
@@ -170,11 +173,11 @@ public class RestServiceStructure {
             return serviceItems;
         }
 
-        List<RestServiceItem> filtered = new ArrayList<>();
-        for (RestServiceItem serviceItem : serviceItems) {
-            if (serviceItem.matches(filterText)) {
-                filtered.add(serviceItem);
-            }
+        SearchQuery query = SearchQuery.parse(filterText);
+        List<SearchResult> results = SearchEngine.search(query, serviceItems, Integer.MAX_VALUE);
+        List<RestServiceItem> filtered = new ArrayList<>(results.size());
+        for (SearchResult result : results) {
+            filtered.add(result.item());
         }
         return filtered;
     }
@@ -452,15 +455,12 @@ public class RestServiceStructure {
             PsiElement psiElement = serviceItem.getPsiElement();
 
             if (!psiElement.isValid()) {
-                LOG.info("psiMethod is invalid: ");
-                LOG.info(psiElement.toString());
-                RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
+                LOG.info("psiElement is invalid: " + psiElement);
+                RestServicesNavigator.getInstance(myProject).scheduleStructureUpdate();
                 return;
             }
 
-            if ((psiElement.getLanguage() == JavaLanguage.INSTANCE
-                    || (psiElement.getLanguage() == KotlinLanguage.INSTANCE && psiElement instanceof KtNamedFunction))
-                    && serviceItem.canNavigate()) {
+            if (serviceItem.canNavigate()) {
                 serviceItem.navigate(true);
             }
         }

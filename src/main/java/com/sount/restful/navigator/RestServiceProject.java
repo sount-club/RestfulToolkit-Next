@@ -30,6 +30,7 @@ public class RestServiceProject {
     }
 
     public RestServiceProject(Module module, List<RestServiceItem> serviceItems) {
+        this.module = module;
         this.moduleName = module.getName();
         port = port;
         appName = moduleName;

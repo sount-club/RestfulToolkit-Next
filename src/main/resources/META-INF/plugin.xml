@@ -20,7 +20,6 @@
   </p>
   <ul>
     <li>Jump to REST endpoint declarations by URL</li>
-    <li>Browse REST services in the <em>RestServices</em> tool window</li>
     <li>Generate and copy full URL, relative URL, query params, and request body JSON</li>
     <li>Convert Java / Kotlin classes to JSON or bulk values</li>
     <li>Supports Spring MVC / Spring Boot, JAX-RS, Java, and Kotlin</li>
@@ -75,14 +74,8 @@
 		 Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
 	<extensions defaultExtensionNs="com.intellij">
 		<projectService serviceImplementation="com.sount.restful.navigation.action.GotoRequestMappingConfiguration"/>
-		<projectService serviceImplementation="com.sount.restful.navigator.RestServiceProjectsManager"/>
-		<projectService serviceImplementation="com.sount.restful.navigator.RestServicesNavigator"/>
-		<projectService serviceImplementation="com.sount.restful.navigator.RestServiceDetail"/>
-		<toolWindow id="RestServices"
-					anchor="right"
-					icon="/icons/restService.svg"
-					canCloseContents="false"
-					factoryClass="com.sount.restful.navigator.RestServicesToolWindowFactory"/>
+		<projectService serviceImplementation="com.sount.restful.search.EndpointIndex"/>
+		<projectService serviceImplementation="com.sount.restful.search.SearchHistory"/>
 	</extensions>
 
 	<extensions defaultExtensionNs="org.jetbrains.kotlin">
@@ -134,33 +127,6 @@
 			<keyboard-shortcut keymap="$default" first-keystroke="ctrl alt N"/>
 		</action>
 
-		<!--刷新-->
-		<action id="Toolkit.RefreshServices" class="com.sount.restful.navigator.RefreshProjectAction"
-				text="Refresh Services in Project"
-				icon="AllIcons.Actions.Refresh">
-		</action>
-
-		<group id="Toolkit.NavigatorActionsToolbar">
-			<reference id="Toolkit.RefreshServices"/>
-			<separator/>
-			<reference id="Toolkit.GotoService"/>
-			<separator/>
-		</group>
-
-		<group id="Toolkit.NavigatorServiceMenu">
-			<action id="Menu.CopyFullUrlAction" class="com.sount.restful.navigator.CopyFullUrlAction"
-					text="Copy Full Url"
-					icon="AllIcons.Actions.Copy">
-			</action>
-			<action id="Menu.EditSourceAction" class="com.sount.restful.navigator.EditSourceAction"
-					text="Jump to Source"
-					icon="AllIcons.Actions.EditSource">
-			</action>
-			<separator/>
-		</group>
 	</actions>
 
-	<projectListeners>
-		<listener class="com.sount.restful.navigator.MyToolwindowListener" topic="com.intellij.openapi.wm.ex.ToolWindowManagerListener" />
-	</projectListeners>
 </idea-plugin>

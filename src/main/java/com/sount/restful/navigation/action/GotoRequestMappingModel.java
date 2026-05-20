@@ -22,7 +22,9 @@ import java.util.Collection;
 
 /**
  * Model for "Go to | File" action
+ * @deprecated Use {@link com.sount.restful.search.UnifiedSearchPopup} instead.
  */
+@Deprecated
 public class GotoRequestMappingModel extends FilteringGotoByModel<HttpMethod> implements DumbAware, CustomMatcherModel {
 
     protected GotoRequestMappingModel(@NotNull Project project, @NotNull ChooseByNameContributor[] contributors) {

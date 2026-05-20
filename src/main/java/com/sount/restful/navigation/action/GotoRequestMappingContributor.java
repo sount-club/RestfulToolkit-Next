@@ -5,7 +5,7 @@ import com.intellij.navigation.ChooseByNameContributor;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import com.sount.restful.common.ServiceHelper;
+import com.sount.restful.common.resolver.BaseServiceResolver;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -25,9 +25,9 @@ public class GotoRequestMappingContributor implements ChooseByNameContributor {
     public String[] getNames(Project project, boolean onlyThisModuleChecked) {
         List<RestServiceItem> itemList;
         if (onlyThisModuleChecked && myModule != null) {
-            itemList = ServiceHelper.buildRestServiceItemListUsingResolver(myModule);
+            itemList = BaseServiceResolver.findAllEndpoints(myModule);
         } else {
-            itemList = ServiceHelper.buildRestServiceItemListUsingResolver(project);
+            itemList = BaseServiceResolver.findAllEndpoints(project);
         }
 
         navItem = itemList;

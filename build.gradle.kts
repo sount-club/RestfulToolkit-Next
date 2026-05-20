@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sount"
-version = "1.0.1"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -31,6 +31,7 @@ dependencies {
 
     // RSyntaxTextArea for syntax highlighting
     implementation("com.fifesoft:rsyntaxtextarea:3.5.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
 intellijPlatform {
