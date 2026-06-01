@@ -1,5 +1,7 @@
 package com.sount.restful.search;
 
+import com.intellij.openapi.editor.ex.EditorEx;
+import com.intellij.ui.EditorTextField;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.sount.restful.common.PsiMethodHelper;
 
@@ -36,13 +38,72 @@ public class UnifiedSearchPreviewTest extends BasePlatformTestCase {
         assertFalse(preview.getComponent(0) instanceof JScrollPane);
     }
 
-    public void testRequestBodySectionIsHiddenWhenBodyIsEmpty() {
+    public void testMethodCodeSectionReplacesRequestSchemaSections() {
         UnifiedSearchPreview preview = new UnifiedSearchPreview(getProject());
 
+        JComponent methodCodeSection = findComponentByName(preview, "methodCodeSection");
         JComponent requestBodySection = findComponentByName(preview, "requestBodySection");
 
-        assertNotNull(requestBodySection);
-        assertFalse(requestBodySection.isVisible());
+        assertNotNull(methodCodeSection);
+        assertNull(requestBodySection);
+    }
+
+    public void testMethodCodePreviewUsesEditorTextField() {
+        UnifiedSearchPreview preview = new UnifiedSearchPreview(getProject());
+
+        EditorTextField editor = findComponentByType(preview, EditorTextField.class);
+
+        assertNotNull(editor);
+        assertTrue(editor.isViewer());
+    }
+
+    public void testMethodCodeEditorDisablesSoftWraps() {
+        UnifiedSearchPreview preview = new UnifiedSearchPreview(getProject());
+        EditorTextField editor = findComponentByType(preview, EditorTextField.class);
+
+        assertNotNull(editor);
+        preview.addNotify();
+        EditorEx editorEx = editor.getEditor(true);
+
+        assertNotNull(editorEx);
+        assertFalse(editorEx.getSettings().isUseSoftWraps());
+        assertTrue(editorEx.getSettings().isLineNumbersShown());
+        preview.removeNotify();
+    }
+
+    public void testMethodCodeTextComesFromPsiElement() {
+        var javaFile = myFixture.configureByText("LoginAction.java", """
+                package demo;
+
+                class LoginAction {
+                    void login(String username) {
+                        System.out.println(username);
+                    }
+                }
+                """);
+        var loginMethod = ((com.intellij.psi.PsiJavaFile) javaFile)
+                .getClasses()[0]
+                .findMethodsByName("login", false)[0];
+
+        String methodCode = UnifiedSearchPreview.buildMethodCode(loginMethod);
+
+        assertTrue(methodCode.contains("void login(String username)"));
+        assertTrue(methodCode.contains("System.out.println(username);"));
+    }
+
+    public void testMethodCodeFileTypeComesFromContainingFile() {
+        var javaFile = myFixture.configureByText("LoginAction.java", """
+                package demo;
+
+                class LoginAction {
+                    void login() {}
+                }
+                """);
+        var loginMethod = ((com.intellij.psi.PsiJavaFile) javaFile)
+                .getClasses()[0]
+                .findMethodsByName("login", false)[0];
+
+        assertEquals(javaFile.getFileType(), UnifiedSearchPreview.resolveMethodCodeFileType(loginMethod));
     }
 
     public void testRequestBodyJsonIsBuiltFromRequestBodyParameter() {
@@ -146,6 +207,21 @@ public class UnifiedSearchPreviewTest extends BasePlatformTestCase {
             }
             if (component instanceof Container childContainer) {
                 JComponent found = findComponentByName(childContainer, name);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static <T extends Component> T findComponentByType(Container container, Class<T> type) {
+        for (Component component : container.getComponents()) {
+            if (type.isInstance(component)) {
+                return type.cast(component);
+            }
+            if (component instanceof Container childContainer) {
+                T found = findComponentByType(childContainer, type);
                 if (found != null) {
                     return found;
                 }

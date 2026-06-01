@@ -1,6 +1,7 @@
 package com.sount.restful.common.resolver;
 
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiAnnotation;
@@ -36,6 +37,7 @@ import java.util.Collections;
 import java.util.List;
 
 public class SpringResolver extends BaseServiceResolver {
+    private static final Logger LOG = Logger.getInstance(SpringResolver.class);
 
     PropertiesHandler propertiesHandler;
 
@@ -59,12 +61,16 @@ public class SpringResolver extends BaseServiceResolver {
             // java: 标注了 (Rest)Controller 注解的类，即 Controller 类
             Collection<PsiAnnotation> psiAnnotations = findAnnotationsByShortName(
                     controllerAnnotation.getShortName(), project, globalSearchScope);
+            LOG.debug("Found " + psiAnnotations.size() + " @" + controllerAnnotation.getShortName() + " annotations");
             for (PsiAnnotation psiAnnotation : psiAnnotations) {
-                PsiModifierList psiModifierList = (PsiModifierList) psiAnnotation.getParent();
+                if (!(psiAnnotation.getParent() instanceof PsiModifierList psiModifierList)) {
+                    continue;
+                }
                 PsiElement psiElement = psiModifierList.getParent();
 
-                /*if (!(psiElement instanceof PsiClass)) continue; // RestController annotation 只出现在 class*/
-                PsiClass psiClass = (PsiClass) psiElement;
+                if (!(psiElement instanceof PsiClass psiClass)) {
+                    continue;
+                }
                 List<RestServiceItem> serviceItemList = getServiceItemList(psiClass);
                 itemList.addAll(serviceItemList);
             }
@@ -72,31 +78,37 @@ public class SpringResolver extends BaseServiceResolver {
 
 
             // kotlin:
-            Collection<KtAnnotationEntry> ktAnnotationEntries = KotlinAnnotationsIndex.Helper.get(controllerAnnotation.getShortName(), project, globalSearchScope);
-            for (KtAnnotationEntry ktAnnotationEntry : ktAnnotationEntries) {
-                KtClass ktClass = (KtClass) ktAnnotationEntry.getParent().getParent();
+            try {
+                Collection<KtAnnotationEntry> ktAnnotationEntries = KotlinAnnotationsIndex.Helper.get(controllerAnnotation.getShortName(), project, globalSearchScope);
+                LOG.debug("Found " + ktAnnotationEntries.size() + " Kotlin @" + controllerAnnotation.getShortName() + " annotations");
+                for (KtAnnotationEntry ktAnnotationEntry : ktAnnotationEntries) {
+                    PsiElement modifierList = ktAnnotationEntry.getParent();
+                    if (modifierList == null || !(modifierList.getParent() instanceof KtClass ktClass)) {
+                        continue;
+                    }
 
-                List<RequestPath> classRequestPaths = getRequestPaths(ktClass);
+                    List<RequestPath> classRequestPaths = getRequestPaths(ktClass);
 
-                List<KtNamedFunction> ktNamedFunctions = getKtNamedFunctions(ktClass);
-                for (KtNamedFunction fun : ktNamedFunctions) {
-                    List<RequestPath> requestPaths = getRequestPaths(fun);
+                    List<KtNamedFunction> ktNamedFunctions = getKtNamedFunctions(ktClass);
+                    for (KtNamedFunction fun : ktNamedFunctions) {
+                        List<RequestPath> requestPaths = getRequestPaths(fun);
 
-                    for (RequestPath classRequestPath : classRequestPaths) {
-                        for (RequestPath requestPath : requestPaths) {
-                            requestPath.concat(classRequestPath);
-                            itemList.add(createRestServiceItem(fun, "", requestPath));
+                        for (RequestPath classRequestPath : classRequestPaths) {
+                            for (RequestPath requestPath : requestPaths) {
+                                requestPath.concat(classRequestPath);
+                                itemList.add(createRestServiceItem(fun, "", requestPath));
+                            }
                         }
                     }
                 }
-/*
-                PsiClass psiClass = LightClassUtilsKt.toLightClass(ktClass);
-                itemList.addAll(getServiceItemList(psiClass));*/
-
+            } catch (Throwable e) {
+                // Kotlin plugin may not be installed or index not available
+                LOG.debug("Kotlin annotation index not available for @" + controllerAnnotation.getShortName(), e);
             }
 
         }
 
+        LOG.info("SpringResolver found " + itemList.size() + " endpoints");
         return itemList;
     }
 
@@ -357,8 +369,16 @@ public class SpringResolver extends BaseServiceResolver {
 
     private static Collection<PsiAnnotation> findAnnotationsByShortName(
             String shortName, Project project, GlobalSearchScope scope) {
-        // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
-        return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
+        try {
+            // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
+            return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
+        } catch (Throwable e) {
+            // Handle index inconsistency gracefully - log and return empty collection
+            // This can happen when IDE index is corrupted, being rebuilt, or has stub/text mismatch
+            // Catching Throwable to handle both exceptions and assertion errors from IDE internals
+            LOG.warn("Failed to find @" + shortName + " annotations (index may be inconsistent)", e);
+            return new ArrayList<>();
+        }
     }
 
 }

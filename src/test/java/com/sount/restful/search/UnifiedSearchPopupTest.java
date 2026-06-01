@@ -22,6 +22,20 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
         assertEquals("last-query", UnifiedSearchPopup.resolveInitialSearchText("", java.util.List.of("last-query")));
     }
 
+    public void testStatusShowsLoadingBeforeEndpointIndexIsReady() {
+        assertEquals("Indexing REST endpoints. Results will refresh automatically...",
+                UnifiedSearchPopup.buildStatusText("", 0, 0, false));
+        assertEquals("Indexing REST endpoints for \"users\". Results will refresh automatically...",
+                UnifiedSearchPopup.buildStatusText("users", 0, 0, false));
+        assertEquals("Indexing REST endpoints for \"/commo\". Results will refresh automatically...",
+                UnifiedSearchPopup.buildStatusText("/commo", 0, 12, false));
+    }
+
+    public void testStatusShowsNoEndpointsOnlyAfterEndpointIndexIsReady() {
+        assertEquals("No endpoints found. Please check your project configuration.",
+                UnifiedSearchPopup.buildStatusText("", 0, 0, true));
+    }
+
     public void testFindSelectionIndexPrefersSavedEndpointKey() {
         RestServiceItem first = createItem("GET", "/activity/list");
         RestServiceItem second = createItem("GET", "/activity/rewardDetail");

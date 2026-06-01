@@ -1,6 +1,7 @@
 package com.sount.restful.common.resolver;
 
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
@@ -17,6 +18,7 @@ import java.util.List;
 
 
 public class JaxrsResolver extends BaseServiceResolver {
+    private static final Logger LOG = Logger.getInstance(JaxrsResolver.class);
 
     public JaxrsResolver(Module module) {
         myModule = module;
@@ -32,9 +34,12 @@ public class JaxrsResolver extends BaseServiceResolver {
 
         Collection<PsiAnnotation> psiAnnotations = findAnnotationsByShortName(
                 JaxrsPathAnnotation.PATH.getShortName(), project, globalSearchScope);
+        LOG.debug("Found " + psiAnnotations.size() + " @Path annotations");
 
         for (PsiAnnotation psiAnnotation : psiAnnotations) {
-            PsiModifierList psiModifierList = (PsiModifierList) psiAnnotation.getParent();
+            if (!(psiAnnotation.getParent() instanceof PsiModifierList psiModifierList)) {
+                continue;
+            }
             PsiElement psiElement = psiModifierList.getParent();
 
             if (!(psiElement instanceof PsiClass psiClass)) continue;
@@ -60,12 +65,21 @@ public class JaxrsResolver extends BaseServiceResolver {
 
         }
 
+        LOG.info("JaxrsResolver found " + itemList.size() + " endpoints");
         return itemList;
     }
 
     private static Collection<PsiAnnotation> findAnnotationsByShortName(
             String shortName, Project project, GlobalSearchScope scope) {
-        // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
-        return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
+        try {
+            // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
+            return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
+        } catch (Throwable e) {
+            // Handle index inconsistency gracefully - log and return empty collection
+            // This can happen when IDE index is corrupted, being rebuilt, or has stub/text mismatch
+            // Catching Throwable to handle both exceptions and assertion errors from IDE internals
+            LOG.warn("Failed to find @" + shortName + " annotations (index may be inconsistent)", e);
+            return new ArrayList<>();
+        }
     }
 }

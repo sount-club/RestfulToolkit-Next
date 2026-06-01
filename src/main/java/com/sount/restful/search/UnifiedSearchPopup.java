@@ -361,6 +361,7 @@ public final class UnifiedSearchPopup {
                                       @Nullable Integer preferredFirstVisibleIndex,
                                       @Nullable Integer preferredScrollY) {
         List<RestServiceItem> allItems = index.getItems();
+        boolean indexReady = index.isReady();
         List<RestServiceItem> searchableItems = allItems;
         if (filterModule != null) {
             List<RestServiceItem> filtered = new java.util.ArrayList<>();
@@ -395,16 +396,36 @@ public final class UnifiedSearchPopup {
                 selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
             }
 
-            String statusText;
-            if (text.isEmpty()) {
-                statusText = totalCount + " endpoints loaded";
-            } else if (results.isEmpty()) {
-                statusText = "No results found for \"" + text + "\"";
-            } else {
-                statusText = results.size() + " results found";
-            }
-            statusLabel.setText(statusText);
+            statusLabel.setText(buildStatusText(text, results.size(), totalCount, indexReady));
         });
+    }
+
+    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady) {
+        if (!indexReady && resultCount == 0) {
+            if (text.isEmpty()) {
+                return "Indexing REST endpoints... Results will refresh automatically.";
+            }
+            return "Indexing REST endpoints for \"" + text + "\"... Results will refresh automatically.";
+        }
+
+        if (text.isEmpty()) {
+            if (totalCount == 0) {
+                return "No endpoints found. Check if project has Spring/JAX-RS controllers and IDE indexing is complete.";
+            }
+            return totalCount + " endpoints loaded";
+        }
+
+        if (resultCount == 0) {
+            String statusText = "No results found for \"" + text + "\"";
+            if (totalCount > 0) {
+                statusText += " (" + totalCount + " endpoints indexed)";
+            } else {
+                statusText += ". Index may be loading, please wait...";
+            }
+            return statusText;
+        }
+
+        return resultCount + " results found";
     }
 
     static int findSelectionIndex(@NotNull List<SearchResult> results, @Nullable String preferredEndpointKey) {

@@ -82,7 +82,14 @@ public class RestServiceItem implements NavigationItem {
     @Override
     public void navigate(boolean requestFocus) {
         if (navigationElement != null) {
-            navigationElement.navigate(requestFocus);
+            // PSI access (isValid, canNavigate) requires read lock
+            Navigatable nav = ReadAction.compute(() -> {
+                if (psiElement == null || !psiElement.isValid()) return null;
+                return navigationElement.canNavigate() ? navigationElement : null;
+            });
+            if (nav != null) {
+                nav.navigate(requestFocus);
+            }
             return;
         }
 
@@ -101,7 +108,8 @@ public class RestServiceItem implements NavigationItem {
     @Override
     public boolean canNavigate() {
         if (navigationElement != null) {
-            return navigationElement.canNavigate();
+            // PSI access (isValid, canNavigate) requires read lock
+            return ReadAction.compute(() -> psiElement != null && psiElement.isValid() && navigationElement.canNavigate());
         }
         if (psiElement == null) return false;
         return ReadAction.compute(() -> {

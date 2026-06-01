@@ -1,22 +1,23 @@
 package com.sount.restful.search;
 
-import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.editor.EditorFactory;
+import com.intellij.openapi.editor.ex.EditorEx;
+import com.intellij.openapi.fileTypes.FileType;
+import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.openapi.project.Project;
-import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.EditorTextField;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPanel;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
-import com.sount.restful.common.KtFunctionHelper;
-import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.idea.KotlinLanguage;
-import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 import javax.swing.*;
 import java.awt.*;
@@ -28,23 +29,22 @@ import java.util.concurrent.Callable;
 public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
 
     private static final String NO_DESCRIPTION = "No description";
-    private static final String NO_QUERY_PARAMETERS = "No query parameters";
-    private static final String LOADING_SCHEMA = "Loading request schema...";
+    private static final String NO_METHOD_CODE = "No method source available";
+    private static final String LOADING_METHOD_CODE = "Loading method code...";
 
     private final JBLabel methodLabel = new JBLabel();
     private final JTextArea endpointArea = new JTextArea();
     private final JTextArea sourceArea = new JTextArea();
-    private final JTextArea paramsArea = new JTextArea();
-    private final JTextArea bodyArea = new JTextArea();
+    private final EditorTextField methodCodeEditor;
     private final JTextArea descriptionArea = new JTextArea();
     private final Project myProject;
-    private JPanel requestBodySection;
 
     static final int MAX_PREVIEW_WIDTH = JBUI.scale(360);
 
     public UnifiedSearchPreview(@NotNull Project project) {
         super(new BorderLayout());
         myProject = project;
+        methodCodeEditor = createMethodCodeEditor(project);
         initUI();
     }
 
@@ -62,11 +62,9 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
 
         addPreviewRow(centerPanel, createHeaderPanel(), 0, 0, 0);
         addPreviewRow(centerPanel, createDescriptionPanel(), 1, 0, JBUI.scale(8));
-        addPreviewRow(centerPanel, createCodeSection("Query / Params", paramsArea, 4), 2, 0.35, JBUI.scale(8));
-        requestBodySection = createCodeSection("Request Body", bodyArea, 4);
-        requestBodySection.setName("requestBodySection");
-        requestBodySection.setVisible(false);
-        addPreviewRow(centerPanel, requestBodySection, 3, 0.65, JBUI.scale(8));
+        JPanel methodCodeSection = createSectionPanel("Method Code", methodCodeEditor);
+        methodCodeSection.setName("methodCodeSection");
+        addPreviewRow(centerPanel, methodCodeSection, 2, 1, JBUI.scale(8));
 
         add(centerPanel, BorderLayout.CENTER);
     }
@@ -143,14 +141,6 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         return createSectionPanel("Description", descriptionArea);
     }
 
-    private @NotNull JPanel createCodeSection(@NotNull String title, @NotNull JTextArea area, int rows) {
-        configureReadOnlyTextArea(area, new Font(Font.MONOSPACED, Font.PLAIN, UIUtil.getLabelFont().getSize()), true);
-        area.setRows(rows);
-        JScrollPane scrollPane = new JScrollPane(area);
-        scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        return createSectionPanel(title, scrollPane);
-    }
-
     private @NotNull JPanel createSectionPanel(@NotNull String title, @NotNull JComponent content) {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
@@ -166,6 +156,28 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         ));
         panel.add(content, BorderLayout.CENTER);
         return panel;
+    }
+
+    private static @NotNull EditorTextField createMethodCodeEditor(@NotNull Project project) {
+        Document document = EditorFactory.getInstance().createDocument("");
+        EditorTextField editor = new EditorTextField(document, project, PlainTextFileType.INSTANCE, true, false);
+        editor.setName("methodCodeEditor");
+        editor.setOneLineMode(false);
+        editor.setViewer(true);
+        editor.addSettingsProvider(UnifiedSearchPreview::configureMethodCodeEditor);
+        return editor;
+    }
+
+    private static void configureMethodCodeEditor(@NotNull EditorEx editor) {
+        editor.setHorizontalScrollbarVisible(true);
+        editor.setVerticalScrollbarVisible(true);
+        editor.getSettings().setUseSoftWraps(false);
+        editor.getSettings().setLineNumbersShown(true);
+        editor.getSettings().setLineMarkerAreaShown(false);
+        editor.getSettings().setFoldingOutlineShown(false);
+        editor.getSettings().setIndentGuidesShown(true);
+        editor.getSettings().setAdditionalColumnsCount(3);
+        editor.getSettings().setAdditionalLinesCount(1);
     }
 
     private static void configureReadOnlyTextArea(@NotNull JTextArea area, @NotNull Font font, boolean codeStyle) {
@@ -205,35 +217,17 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         endpointArea.setToolTipText(url);
         sourceArea.setText(buildSourceText(location, moduleName, ""));
         descriptionArea.setText(displayOrEmpty(javadoc, NO_DESCRIPTION));
-        paramsArea.setText(LOADING_SCHEMA);
-        updateRequestBodySection("");
+        setMethodCode(PlainTextFileType.INSTANCE, LOADING_METHOD_CODE);
 
-        // Compute params/body off EDT to avoid slow-operation prohibition on EDT.
-        // PSI index access (JavaPsiFacade.findClass) is a slow operation.
-        Callable<String[]> computeTask = () -> {
-            if (currentItem != item) return new String[]{"", ""}; // stale
-            String requestParams = "";
-            String requestBody = "";
-
-            if (item.getPsiElement().getLanguage() == JavaLanguage.INSTANCE && item.getPsiMethod() != null) {
-                PsiMethodHelper helper = PsiMethodHelper.create(item.getPsiMethod()).withModule(item.getModule());
-                requestParams = helper.buildParamString().replace("&", "\n");
-                requestBody = helper.buildRequestBodyJson();
-            } else if (item.getPsiElement().getLanguage() == KotlinLanguage.INSTANCE && item.getPsiElement() instanceof KtNamedFunction ktFunc) {
-                KtFunctionHelper helper = KtFunctionHelper.create(ktFunc).withModule(item.getModule());
-                requestParams = helper.buildParamString().replace("&", "\n");
-                requestBody = helper.buildRequestBodyJson();
-            }
-
-            return new String[]{requestParams != null ? requestParams : "",
-                    requestBody != null ? requestBody : ""};
+        Callable<String> computeTask = () -> {
+            if (currentItem != item) return "";
+            return buildMethodCode(item.getPsiElement());
         };
         ReadAction.nonBlocking(computeTask).finishOnUiThread(ModalityState.defaultModalityState(), result -> {
             if (!Objects.equals(currentItem, item)) {
                 return; // stale
             }
-            paramsArea.setText(displayOrEmpty(result[0], NO_QUERY_PARAMETERS));
-            updateRequestBodySection(result[1]);
+            setMethodCode(resolveMethodCodeFileType(item.getPsiElement()), displayOrEmpty(result, NO_METHOD_CODE));
         }).submit(AppExecutorUtil.getAppExecutorService());
     }
 
@@ -244,18 +238,13 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         endpointArea.setToolTipText(null);
         sourceArea.setText("");
         descriptionArea.setText("");
-        paramsArea.setText("");
-        updateRequestBodySection("");
+        setMethodCode(PlainTextFileType.INSTANCE, "");
     }
 
-    private void updateRequestBodySection(@Nullable String requestBody) {
-        boolean hasRequestBody = requestBody != null && !requestBody.isBlank();
-        bodyArea.setText(hasRequestBody ? requestBody : "");
-        if (requestBodySection != null) {
-            requestBodySection.setVisible(hasRequestBody);
-            revalidate();
-            repaint();
-        }
+    private void setMethodCode(@NotNull FileType fileType, @NotNull String text) {
+        Document document = EditorFactory.getInstance().createDocument(text);
+        methodCodeEditor.setNewDocumentAndFileType(fileType, document);
+        methodCodeEditor.setCaretPosition(0);
     }
 
     static @NotNull String cleanJavadoc(@Nullable String text) {
@@ -270,6 +259,21 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
 
     static @NotNull String displayOrEmpty(@Nullable String text, @NotNull String emptyText) {
         return text == null || text.isBlank() ? emptyText : text;
+    }
+
+    static @NotNull String buildMethodCode(@Nullable com.intellij.psi.PsiElement element) {
+        if (element == null || !element.isValid()) {
+            return "";
+        }
+        return element.getText();
+    }
+
+    static @NotNull FileType resolveMethodCodeFileType(@Nullable com.intellij.psi.PsiElement element) {
+        if (element == null || !element.isValid() || element.getContainingFile() == null) {
+            return PlainTextFileType.INSTANCE;
+        }
+        FileType fileType = element.getContainingFile().getFileType();
+        return fileType != null ? fileType : PlainTextFileType.INSTANCE;
     }
 
     static @NotNull String buildSourceText(@NotNull String location,

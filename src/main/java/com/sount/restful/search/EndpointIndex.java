@@ -1,9 +1,13 @@
 package com.sount.restful.search;
 
+import com.intellij.ProjectTopics;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ModuleRootEvent;
+import com.intellij.openapi.roots.ModuleRootListener;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiTreeChangeEvent;
@@ -30,6 +34,9 @@ public class EndpointIndex implements Disposable {
     private final List<Runnable> myListeners = new CopyOnWriteArrayList<>();
 
     private static final int DEBOUNCE_MS = 500;
+    private static final int RETRY_DELAY_MS = 2000;
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private volatile int retryCount = 0;
 
     private static final String[] CONTROLLER_ANNOTATIONS = {
             "org.springframework.stereotype.Controller",
@@ -50,6 +57,8 @@ public class EndpointIndex implements Disposable {
     public EndpointIndex(@NotNull Project project) {
         myProject = project;
         registerPsiListener();
+        registerRootsListener();
+        registerIndexingListener();
         // Initial load
         scheduleRebuild();
     }
@@ -60,13 +69,20 @@ public class EndpointIndex implements Disposable {
 
     public List<RestServiceItem> getItems() {
         if (myDirty.get() && myRebuilding.compareAndSet(false, true)) {
+            LOG.info("Endpoint index is dirty, scheduling rebuild...");
+            retryCount = 0;
             scheduleRebuild();
         }
         return myItems;
     }
 
+    public boolean isReady() {
+        return !DumbService.isDumb(myProject) && !myDirty.get() && !myRebuilding.get();
+    }
+
     public void refresh() {
         myDirty.set(true);
+        retryCount = 0;
         scheduleRebuild();
     }
 
@@ -140,6 +156,26 @@ public class EndpointIndex implements Disposable {
         }, this);
     }
 
+    private void registerRootsListener() {
+        myProject.getMessageBus().connect(this).subscribe(ProjectTopics.PROJECT_ROOTS, new ModuleRootListener() {
+            @Override
+            public void rootsChanged(@NotNull ModuleRootEvent event) {
+                LOG.info("Project roots changed, scheduling endpoint index rebuild...");
+                myDirty.set(true);
+                notifyListeners();
+                debounceRebuild();
+            }
+        });
+    }
+
+    private void registerIndexingListener() {
+        DumbService.getInstance(myProject).runWhenSmart(() -> {
+            LOG.info("Smart mode entered, triggering endpoint index rebuild for full multi-module coverage...");
+            myDirty.set(true);
+            scheduleRebuild();
+        });
+    }
+
     private void onPsiChanged(@NotNull PsiTreeChangeEvent event) {
         PsiFile file = event.getFile();
         if (file == null || !file.isValid()) return;
@@ -179,6 +215,7 @@ public class EndpointIndex implements Disposable {
         if (!myProject.isOpen() || myProject.isDisposed()) return;
 
         try {
+            LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount + 1) + ")");
             List<RestServiceItem> items = ReadAction.nonBlocking(
                             () -> BaseServiceResolver.findAllEndpoints(myProject))
                     .inSmartMode(myProject)
@@ -189,11 +226,29 @@ public class EndpointIndex implements Disposable {
             myItems = items != null ? items : Collections.emptyList();
             myDirty.set(false);
             myRebuilding.set(false);
+            retryCount = 0;
 
+            LOG.info("Endpoint index rebuild complete. Found " + myItems.size() + " endpoints.");
             notifyListeners();
-        } catch (Exception e) {
-            LOG.warn("Failed to rebuild endpoint index", e);
+        } catch (Throwable e) {
+            // Catch all errors including index inconsistency errors from IDE
+            // These are temporary issues that will resolve after IDE reindexes
+            LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount + 1) + ")", e);
             myRebuilding.set(false);
+
+            // Schedule retry if we haven't exceeded max attempts
+            if (retryCount < MAX_RETRY_ATTEMPTS) {
+                retryCount++;
+                LOG.info("Scheduling retry in " + RETRY_DELAY_MS + "ms...");
+                myAlarm.cancelAllRequests();
+                myAlarm.addRequest(this::doRebuild, RETRY_DELAY_MS);
+            } else {
+                LOG.warn("Max retry attempts reached. Endpoint index may be incomplete.");
+                myDirty.set(false);
+                retryCount = 0;
+                // Notify listeners even on failure so UI can update
+                notifyListeners();
+            }
         }
     }
 

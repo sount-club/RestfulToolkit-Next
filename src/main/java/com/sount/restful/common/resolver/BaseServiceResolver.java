@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public abstract class BaseServiceResolver implements ServiceResolver{
+    private static final com.intellij.openapi.diagnostic.Logger LOG = com.intellij.openapi.diagnostic.Logger.getInstance(BaseServiceResolver.class);
+
     Module myModule;
     Project myProject;
 
@@ -83,7 +85,17 @@ public abstract class BaseServiceResolver implements ServiceResolver{
 
         }*/
 
-        itemList = getRestServiceItemList(myProject, globalSearchScope);
+        try {
+            itemList = getRestServiceItemList(myProject, globalSearchScope);
+            if (itemList == null) {
+                itemList = new ArrayList<>();
+            }
+        } catch (Throwable e) {
+            // Handle any index inconsistency errors gracefully
+            // Return empty list instead of crashing
+            LOG.warn("Failed to resolve REST endpoints (index may be inconsistent)", e);
+            itemList = new ArrayList<>();
+        }
 
         return itemList;
 
