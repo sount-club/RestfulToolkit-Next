@@ -205,7 +205,7 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         String url = item.getUrl();
         String location = item.getLocationText();
         String moduleName = item.getModuleName();
-        String javadoc = cleanJavadoc(item.getJavadoc());
+        String description = item.getDescription();
 
         // Show basic info immediately on EDT
         SearchHistory history = SearchHistory.getInstance(myProject);
@@ -216,7 +216,7 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         endpointArea.setText((isFav ? "\u2605 " : "") + url);
         endpointArea.setToolTipText(url);
         sourceArea.setText(buildSourceText(location, moduleName, ""));
-        descriptionArea.setText(displayOrEmpty(javadoc, NO_DESCRIPTION));
+        descriptionArea.setText(displayOrEmpty(description, NO_DESCRIPTION));
         setMethodCode(PlainTextFileType.INSTANCE, LOADING_METHOD_CODE);
 
         Callable<String> computeTask = () -> {

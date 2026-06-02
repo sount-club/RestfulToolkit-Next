@@ -4,6 +4,7 @@ import com.intellij.ProjectTopics;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ModuleRootEvent;
@@ -65,6 +66,10 @@ public class EndpointIndex implements Disposable {
 
     public static EndpointIndex getInstance(@NotNull Project project) {
         return project.getService(EndpointIndex.class);
+    }
+
+    public @NotNull Project getProject() {
+        return myProject;
     }
 
     public List<RestServiceItem> getItems() {
@@ -230,6 +235,8 @@ public class EndpointIndex implements Disposable {
 
             LOG.info("Endpoint index rebuild complete. Found " + myItems.size() + " endpoints.");
             notifyListeners();
+        } catch (ProcessCanceledException e) {
+            throw e;
         } catch (Throwable e) {
             // Catch all errors including index inconsistency errors from IDE
             // These are temporary issues that will resolve after IDE reindexes

@@ -1,39 +1,40 @@
 package com.sount.restful.search;
 
-import com.intellij.psi.codeStyle.MinusculeMatcher;
-import com.intellij.psi.codeStyle.NameUtil;
-import com.intellij.util.text.matching.MatchingMode;
-import com.sount.restful.common.spring.AntPathMatcher;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public final class SearchEngine {
 
-    private static final int SCORE_EXACT_URL = 1000;
-    private static final int SCORE_STARTS_WITH_URL = 800;
-    private static final int SCORE_CONTAINS_URL = 600;
-    private static final int SCORE_FUZZY_URL = 400;
-    private static final int SCORE_METHOD_BONUS = 200;
-    private static final int SCORE_CLASS_MATCH = 500;
-    private static final int SCORE_METHOD_NAME_MATCH = 500;
-    private static final int SCORE_FAVORITE_BONUS = 300;
-    private static final int SCORE_RECENT_ACCESS_BONUS = 50;
-    private static final int MAX_RECENT_BONUS = 200;
-
-    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
+    private static final int SCORE_PATH_EXACT = 200;
+    private static final int SCORE_PATH_STARTS_WITH = 130;
+    private static final int SCORE_PATH_CONTAINS = 95;
+    private static final int SCORE_METHOD_NAME_EXACT = 90;
+    private static final int SCORE_METHOD_NAME_CONTAINS = 65;
+    private static final int SCORE_DESCRIPTION_CONTAINS = 70;
+    private static final int SCORE_HTTP_METHOD_EXACT = 75;
+    private static final int SCORE_MODULE_NAME_CONTAINS = 55;
+    private static final int SCORE_CONTROLLER_NAME_CONTAINS = 45;
+    private static final int MAX_USE_COUNT_BONUS = 50;
 
     private SearchEngine() {}
 
     public static @NotNull List<SearchResult> search(@Nullable SearchQuery query, @NotNull List<RestServiceItem> items) {
-        return search(query, items, 200);
+        return search(query, items, 200, null);
     }
 
     public static @NotNull List<SearchResult> search(@Nullable SearchQuery query, @NotNull List<RestServiceItem> items, int maxResults) {
+        return search(query, items, maxResults, null);
+    }
+
+    public static @NotNull List<SearchResult> search(@Nullable SearchQuery query, @NotNull List<RestServiceItem> items,
+                                                      int maxResults,
+                                                      @Nullable Function<RestServiceItem, Integer> useCountLookup) {
         if (query == null || query.isEmpty()) {
             // Return all items sorted by URL
             return items.stream()
@@ -43,12 +44,16 @@ public final class SearchEngine {
                     .collect(Collectors.toList());
         }
 
+        // Pre-lower tokens once
+        List<String> lowerTokens = query.tokens().stream()
+                .map(t -> t.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toList());
+
         List<SearchResult> results = new ArrayList<>();
         for (RestServiceItem item : items) {
-            int score = scoreItem(query, item);
-            if (score > 0) {
-                String dimension = determineDimension(query, item);
-                results.add(new SearchResult(item, score, dimension));
+            ScoreResult sr = scoreItem(query, item, lowerTokens, useCountLookup);
+            if (sr.score > 0) {
+                results.add(new SearchResult(item, sr.score, null, sr.matchedFields));
             }
         }
 
@@ -59,147 +64,123 @@ public final class SearchEngine {
         return results;
     }
 
-    private static int scoreItem(@NotNull SearchQuery query, @NotNull RestServiceItem item) {
+    private static @NotNull ScoreResult scoreItem(@NotNull SearchQuery query, @NotNull RestServiceItem item,
+                                                   @NotNull List<String> lowerTokens,
+                                                   @Nullable Function<RestServiceItem, Integer> useCountLookup) {
         int score = 0;
+        Set<String> matchedFields = null; // lazy init
 
-        // Method filter
+        // Method filter — hard filter
         if (query.methodFilter() != null) {
             if (item.getMethod() != query.methodFilter()) {
-                return 0; // Hard filter - skip non-matching methods
+                return ScoreResult.NO_MATCH;
             }
-            score += SCORE_METHOD_BONUS;
+            score += SCORE_HTTP_METHOD_EXACT;
+            matchedFields = addMatchedField(matchedFields, MatchField.HTTP_METHOD);
         }
 
-        // URL pattern matching
-        if (query.urlPattern() != null) {
-            int urlScore = scoreUrlMatch(query.urlPattern(), item.getUrl());
-            if (urlScore == 0 && query.classNamePattern() == null && query.methodNamePattern() == null) {
-                return 0; // No URL match and no other dimensions to match
+        if (lowerTokens.isEmpty()) {
+            if (query.methodFilter() != null) {
+                return new ScoreResult(score, matchedFields != null ? matchedFields : Collections.emptySet());
             }
-            score += urlScore;
+            return ScoreResult.NO_MATCH;
         }
 
-        // Class name matching
-        if (query.classNamePattern() != null) {
-            String locationText = item.getLocationText();
-            if (locationText != null) {
-                String className = extractClassName(locationText);
-                if (containsIgnoreCase(className, query.classNamePattern())) {
-                    score += SCORE_CLASS_MATCH;
-                } else if (fuzzyMatch(className, query.classNamePattern())) {
-                    score += SCORE_CLASS_MATCH / 2;
-                } else if (query.urlPattern() == null && query.methodNamePattern() == null) {
-                    return 0;
-                }
+        // Quick check: all tokens must exist somewhere in the searchable text
+        String searchableText = item.getSearchableText();
+        for (String token : lowerTokens) {
+            if (!searchableText.contains(token)) {
+                return ScoreResult.NO_MATCH;
             }
         }
 
-        // Method name matching
-        if (query.methodNamePattern() != null) {
-            String locationText = item.getLocationText();
-            if (locationText != null) {
-                String methodName = extractMethodName(locationText);
-                if (containsIgnoreCase(methodName, query.methodNamePattern())) {
-                    score += SCORE_METHOD_NAME_MATCH;
-                } else if (fuzzyMatch(methodName, query.methodNamePattern())) {
-                    score += SCORE_METHOD_NAME_MATCH / 2;
-                } else if (query.urlPattern() == null && query.classNamePattern() == null) {
-                    return 0;
-                }
+        // All tokens present — now compute per-token best score using individual fields
+        // These getters are cached after first call (lazy)
+        String path = lower(item.getUrl());
+        String methodName = lower(item.getMethodName());
+        String description = lower(item.getDescription());
+        String httpMethod = lower(item.getMethodText());
+        String moduleName = lower(item.getModuleName());
+        String controllerName = lower(item.getControllerName());
+
+        for (String t : lowerTokens) {
+            int bestTokenScore = 0;
+            String bestField = null;
+
+            // Path matching (highest weight)
+            if (path.equals(t)) {
+                bestTokenScore = SCORE_PATH_EXACT;
+                bestField = MatchField.PATH;
+            } else if (path.startsWith(t)) {
+                bestTokenScore = SCORE_PATH_STARTS_WITH;
+                bestField = MatchField.PATH;
+            } else if (path.contains(t)) {
+                bestTokenScore = SCORE_PATH_CONTAINS;
+                bestField = MatchField.PATH;
+            }
+
+            // Method name
+            if (methodName.equals(t) && SCORE_METHOD_NAME_EXACT > bestTokenScore) {
+                bestTokenScore = SCORE_METHOD_NAME_EXACT;
+                bestField = MatchField.METHOD_NAME;
+            } else if (methodName.contains(t) && SCORE_METHOD_NAME_CONTAINS > bestTokenScore) {
+                bestTokenScore = SCORE_METHOD_NAME_CONTAINS;
+                bestField = MatchField.METHOD_NAME;
+            }
+
+            // Description
+            if (description.contains(t) && SCORE_DESCRIPTION_CONTAINS > bestTokenScore) {
+                bestTokenScore = SCORE_DESCRIPTION_CONTAINS;
+                bestField = MatchField.DESCRIPTION;
+            }
+
+            // HTTP method text
+            if (httpMethod.equals(t) && SCORE_HTTP_METHOD_EXACT > bestTokenScore) {
+                bestTokenScore = SCORE_HTTP_METHOD_EXACT;
+                bestField = MatchField.HTTP_METHOD;
+            }
+
+            // Module name
+            if (moduleName.contains(t) && SCORE_MODULE_NAME_CONTAINS > bestTokenScore) {
+                bestTokenScore = SCORE_MODULE_NAME_CONTAINS;
+                bestField = MatchField.MODULE_NAME;
+            }
+
+            // Controller name
+            if (controllerName.contains(t) && SCORE_CONTROLLER_NAME_CONTAINS > bestTokenScore) {
+                bestTokenScore = SCORE_CONTROLLER_NAME_CONTAINS;
+                bestField = MatchField.CONTROLLER_NAME;
+            }
+
+            // bestTokenScore is guaranteed > 0 since searchableText.contains(t) passed
+            score += bestTokenScore;
+            if (bestField != null) {
+                matchedFields = addMatchedField(matchedFields, bestField);
             }
         }
 
-        // If we only had a method filter and no other patterns matched, still include
-        if (score == SCORE_METHOD_BONUS) {
-            score += SCORE_FUZZY_URL; // Give some base score for method-only filter
+        // Use count bonus
+        if (useCountLookup != null) {
+            int useCount = useCountLookup.apply(item);
+            score += Math.min(useCount, MAX_USE_COUNT_BONUS);
         }
 
-        return score;
+        return new ScoreResult(score, matchedFields != null ? matchedFields : Collections.emptySet());
     }
 
-    private static int scoreUrlMatch(@NotNull String pattern, @Nullable String url) {
-        if (url == null) return 0;
-
-        String lowerPattern = pattern.toLowerCase(Locale.ROOT);
-        String lowerUrl = url.toLowerCase(Locale.ROOT);
-
-        // Exact match
-        if (lowerUrl.equals(lowerPattern)) {
-            return SCORE_EXACT_URL;
+    private static Set<String> addMatchedField(@Nullable Set<String> set, String field) {
+        if (set == null) {
+            set = new LinkedHashSet<>();
         }
-
-        // Starts with
-        if (lowerUrl.startsWith(lowerPattern)) {
-            return SCORE_STARTS_WITH_URL;
-        }
-
-        // Contains
-        if (lowerUrl.contains(lowerPattern)) {
-            return SCORE_CONTAINS_URL;
-        }
-
-        // Fuzzy match with MinusculeMatcher
-        MinusculeMatcher matcher = NameUtil.buildMatcher("*" + pattern)
-                .withMatchingMode(MatchingMode.IGNORE_CASE)
-                .build();
-        if (matcher.matches(url)) {
-            return SCORE_FUZZY_URL;
-        }
-
-        // AntPathMatcher for REST-style {variable} paths
-        try {
-            if (PATH_MATCHER.match(url, pattern) || PATH_MATCHER.match(pattern, url)) {
-                return SCORE_FUZZY_URL;
-            }
-        } catch (Exception ignored) {
-            // AntPathMatcher can throw on malformed patterns
-        }
-
-        return 0;
+        set.add(field);
+        return set;
     }
 
-    private static boolean fuzzyMatch(@Nullable String text, @Nullable String pattern) {
-        if (text == null || pattern == null) return false;
-        MinusculeMatcher matcher = NameUtil.buildMatcher("*" + pattern)
-                .withMatchingMode(MatchingMode.IGNORE_CASE)
-                .build();
-        return matcher.matches(text);
+    private record ScoreResult(int score, Set<String> matchedFields) {
+        static final ScoreResult NO_MATCH = new ScoreResult(0, Collections.emptySet());
     }
 
-    private static boolean containsIgnoreCase(@Nullable String text, @Nullable String expected) {
-        if (text == null || expected == null) return false;
-        return text.toLowerCase(Locale.ROOT).contains(expected.toLowerCase(Locale.ROOT));
-    }
-
-    private static @Nullable String extractClassName(@NotNull String locationText) {
-        int hashIndex = locationText.indexOf('#');
-        if (hashIndex > 0) {
-            return locationText.substring(0, hashIndex);
-        }
-        return locationText;
-    }
-
-    private static @Nullable String extractMethodName(@NotNull String locationText) {
-        int hashIndex = locationText.indexOf('#');
-        if (hashIndex >= 0 && hashIndex < locationText.length() - 1) {
-            return locationText.substring(hashIndex + 1);
-        }
-        return null;
-    }
-
-    private static @Nullable String determineDimension(@NotNull SearchQuery query, @NotNull RestServiceItem item) {
-        if (query.urlPattern() != null && scoreUrlMatch(query.urlPattern(), item.getUrl()) > 0) {
-            return "url";
-        }
-        if (query.classNamePattern() != null && containsIgnoreCase(extractClassName(item.getLocationText()), query.classNamePattern())) {
-            return "class";
-        }
-        if (query.methodNamePattern() != null && containsIgnoreCase(extractMethodName(item.getLocationText()), query.methodNamePattern())) {
-            return "method-name";
-        }
-        if (query.methodFilter() != null && item.getMethod() == query.methodFilter()) {
-            return "method";
-        }
-        return null;
+    private static @NotNull String lower(@Nullable String s) {
+        return s != null ? s.toLowerCase(Locale.ROOT) : "";
     }
 }

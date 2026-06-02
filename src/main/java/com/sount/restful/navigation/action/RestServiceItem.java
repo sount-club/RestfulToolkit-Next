@@ -6,12 +6,14 @@ import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.pom.Navigatable;
+import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.codeStyle.MinusculeMatcher;
 import com.intellij.psi.codeStyle.NameUtil;
 import com.intellij.util.text.matching.MatchingMode;
+import com.sount.restful.common.PsiAnnotationHelper;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.method.action.ModuleHelper;
@@ -45,6 +47,10 @@ public class RestServiceItem implements NavigationItem {
     private String cachedJavadoc;      // pre-computed at construction time
     private String cachedModuleName;   // pre-computed at construction time
     private String cachedPackageName;  // pre-computed at construction time
+    private String cachedDescription;    // lazy: annotation or javadoc description
+    private String cachedControllerName; // lazy: class name only
+    private String cachedMethodName;     // lazy: method name only
+    private String cachedSearchableText; // lazy: pre-lowered concatenation for fast search
 
     //        ((KtClass) ((KtClassBody) psiElement.getParent()).getParent()).getModifierList().getAnnotationEntries().get(0).getText()
     public RestServiceItem(PsiElement psiElement, String requestMethod, String urlPath) {
@@ -62,6 +68,7 @@ public class RestServiceItem implements NavigationItem {
             navigationElement = (Navigatable) psiElement;
         }
         // Pre-compute PSI-dependent fields at construction time (inside read action)
+        // Note: description is lazy (expensive annotation lookup), not eager
         this.cachedLocationText = computeLocationText();
         this.cachedJavadoc = computeJavadoc();
         this.cachedPackageName = computePackageName();
@@ -133,7 +140,10 @@ public class RestServiceItem implements NavigationItem {
         String normalizedPattern = pattern.toLowerCase(Locale.ROOT);
         if (containsIgnoreCase(getMethodText(), normalizedPattern)
                 || containsIgnoreCase(getLocationText(), normalizedPattern)
-                || containsIgnoreCase(getModuleName(), normalizedPattern)) {
+                || containsIgnoreCase(getModuleName(), normalizedPattern)
+                || containsIgnoreCase(getDescription(), normalizedPattern)
+                || containsIgnoreCase(getControllerName(), normalizedPattern)
+                || containsIgnoreCase(getMethodName(), normalizedPattern)) {
             return true;
         }
 
@@ -324,6 +334,102 @@ public class RestServiceItem implements NavigationItem {
             }
         }
         return "";
+    }
+
+    public String getDescription() {
+        if (cachedDescription != null) return cachedDescription;
+        // PSI annotation access requires read action; may be called from EDT during search
+        cachedDescription = ReadAction.compute(this::computeDescription);
+        return cachedDescription;
+    }
+
+    private String computeDescription() {
+        // 1. Try annotation-based descriptions
+        if (psiElement instanceof PsiMethod psiMethod) {
+            for (PsiAnnotation annotation : psiMethod.getAnnotations()) {
+                String qualifiedName = annotation.getQualifiedName();
+                if (qualifiedName == null) continue;
+                // @ApiOperation("xxx")
+                if ("io.swagger.annotations.ApiOperation".equals(qualifiedName)) {
+                    String value = PsiAnnotationHelper.getAnnotationAttributeValue(annotation, "value");
+                    if (value != null && !value.isBlank()) return value;
+                }
+                // @Operation(summary = "xxx")
+                if ("io.swagger.v3.oas.annotations.Operation".equals(qualifiedName)) {
+                    String summary = PsiAnnotationHelper.getAnnotationAttributeValue(annotation, "summary");
+                    if (summary != null && !summary.isBlank()) return summary;
+                }
+            }
+        }
+        // 2. Fall back to javadoc
+        if (cachedJavadoc != null && !cachedJavadoc.isBlank()) {
+            return cleanJavadocText(cachedJavadoc);
+        }
+        return "";
+    }
+
+    private static String cleanJavadocText(String text) {
+        return text.replace("/**", "").replace("*/", "")
+                .replaceAll("(?m)^\\s*\\*\\s?", "").trim();
+    }
+
+    public String getControllerName() {
+        if (cachedControllerName != null) return cachedControllerName;
+        cachedControllerName = ReadAction.compute(this::computeControllerName);
+        return cachedControllerName;
+    }
+
+    private String computeControllerName() {
+        if (psiElement instanceof PsiMethod methodElement) {
+            PsiClass containingClass = methodElement.getContainingClass();
+            return containingClass != null ? containingClass.getName() : "";
+        }
+        if (psiElement instanceof KtNamedFunction) {
+            if (psiElement.getParent() != null && psiElement.getParent().getParent() instanceof KtClass ktClass) {
+                return ktClass.getName();
+            }
+        }
+        return "";
+    }
+
+    public String getMethodName() {
+        if (cachedMethodName != null) return cachedMethodName;
+        cachedMethodName = ReadAction.compute(this::computeMethodName);
+        return cachedMethodName;
+    }
+
+    private String computeMethodName() {
+        if (psiElement instanceof PsiMethod methodElement) {
+            return methodElement.getName();
+        }
+        if (psiElement instanceof KtNamedFunction ktNamedFunction) {
+            return ktNamedFunction.getName();
+        }
+        return "";
+    }
+
+    /**
+     * Returns a pre-lowered concatenation of all searchable fields.
+     * Cached after first call for fast repeated search scoring.
+     */
+    public String getSearchableText() {
+        if (cachedSearchableText != null) return cachedSearchableText;
+        StringBuilder sb = new StringBuilder();
+        appendLower(sb, getMethodText());
+        appendLower(sb, getUrl());
+        appendLower(sb, getDescription());
+        appendLower(sb, getControllerName());
+        appendLower(sb, getMethodName());
+        appendLower(sb, getModuleName());
+        cachedSearchableText = sb.toString();
+        return cachedSearchableText;
+    }
+
+    private static void appendLower(StringBuilder sb, String value) {
+        if (value != null && !value.isEmpty()) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(value.toLowerCase(Locale.ROOT));
+        }
     }
 
     @Override

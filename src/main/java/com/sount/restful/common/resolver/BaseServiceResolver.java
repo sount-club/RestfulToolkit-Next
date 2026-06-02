@@ -3,6 +3,7 @@ package com.sount.restful.common.resolver;
 
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtil;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -90,6 +91,8 @@ public abstract class BaseServiceResolver implements ServiceResolver{
             if (itemList == null) {
                 itemList = new ArrayList<>();
             }
+        } catch (ProcessCanceledException e) {
+            throw e;
         } catch (Throwable e) {
             // Handle any index inconsistency errors gracefully
             // Return empty list instead of crashing

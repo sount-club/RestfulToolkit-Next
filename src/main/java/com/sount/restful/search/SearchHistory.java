@@ -24,6 +24,7 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
         public Map<String, Integer> selectedIndexByQuery = new HashMap<>();
         public Map<String, Integer> firstVisibleIndexByQuery = new HashMap<>();
         public Map<String, Integer> scrollYByQuery = new HashMap<>();
+        public Map<String, Integer> useCountByEndpoint = new HashMap<>();
     }
 
     public static SearchHistory getInstance(@NotNull Project project) {
@@ -43,6 +44,15 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
     public void recordAccess(@NotNull RestServiceItem item) {
         String key = item.getEndpointKey();
         myState.accessTimes.put(key, System.currentTimeMillis());
+        recordUse(item);
+    }
+
+    public void recordUse(@NotNull RestServiceItem item) {
+        myState.useCountByEndpoint.merge(item.getEndpointKey(), 1, Integer::sum);
+    }
+
+    public int getUseCount(@NotNull RestServiceItem item) {
+        return myState.useCountByEndpoint.getOrDefault(item.getEndpointKey(), 0);
     }
 
     public void recordQuery(@NotNull String query) {

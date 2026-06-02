@@ -4,11 +4,22 @@ import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Collections;
+import java.util.Set;
+
 public record SearchResult(
         @NotNull RestServiceItem item,
         int score,
-        @Nullable String matchDimension
+        @Nullable String matchDimension,
+        @NotNull Set<String> matchedFields
 ) implements Comparable<SearchResult> {
+
+    /**
+     * Backward-compatible constructor without match fields.
+     */
+    public SearchResult(@NotNull RestServiceItem item, int score, @Nullable String matchDimension) {
+        this(item, score, matchDimension, Collections.emptySet());
+    }
 
     @Override
     public int compareTo(@NotNull SearchResult other) {

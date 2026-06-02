@@ -23,16 +23,16 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
     }
 
     public void testStatusShowsLoadingBeforeEndpointIndexIsReady() {
-        assertEquals("Indexing REST endpoints. Results will refresh automatically...",
+        assertEquals("Indexing REST endpoints... Results will refresh automatically.",
                 UnifiedSearchPopup.buildStatusText("", 0, 0, false));
-        assertEquals("Indexing REST endpoints for \"users\". Results will refresh automatically...",
+        assertEquals("Indexing REST endpoints for \"users\"... Results will refresh automatically.",
                 UnifiedSearchPopup.buildStatusText("users", 0, 0, false));
-        assertEquals("Indexing REST endpoints for \"/commo\". Results will refresh automatically...",
+        assertEquals("Indexing REST endpoints for \"/commo\"... Results will refresh automatically.",
                 UnifiedSearchPopup.buildStatusText("/commo", 0, 12, false));
     }
 
     public void testStatusShowsNoEndpointsOnlyAfterEndpointIndexIsReady() {
-        assertEquals("No endpoints found. Please check your project configuration.",
+        assertEquals("No endpoints found. Check if project has Spring/JAX-RS controllers and IDE indexing is complete.",
                 UnifiedSearchPopup.buildStatusText("", 0, 0, true));
     }
 
@@ -182,45 +182,6 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
             lastVisibleIndex = index;
             super.ensureIndexIsVisible(index);
         }
-    }
-
-    public void testResultListScrollPaneStartsWithStableWidthWithoutHorizontalScrolling() {
-        JScrollPane scrollPane = UnifiedSearchPopup.createResultListScrollPane(new JBList<>());
-
-        assertEquals(520, scrollPane.getPreferredSize().width);
-        assertEquals(0, scrollPane.getMinimumSize().width);
-        assertEquals(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER, scrollPane.getHorizontalScrollBarPolicy());
-    }
-
-    public void testResultsAndPreviewPanelCanShrinkPreviewWithoutMovingPopupBounds() {
-        JScrollPane resultScrollPane = UnifiedSearchPopup.createResultListScrollPane(new JBList<>());
-        JPanel previewPanel = new JPanel();
-        previewPanel.setPreferredSize(new java.awt.Dimension(900, 450));
-        previewPanel.setMinimumSize(new java.awt.Dimension(900, 450));
-        JSplitPane panel = UnifiedSearchPopup.createResultsAndPreviewPanel(resultScrollPane, previewPanel);
-
-        panel.setBounds(0, 0, 1200, 450);
-        panel.setDividerLocation(560);
-        panel.doLayout();
-
-        assertEquals(560, resultScrollPane.getWidth());
-        assertEquals(0, resultScrollPane.getX());
-        assertTrue(previewPanel.getX() >= 560);
-        assertTrue(previewPanel.getWidth() < previewPanel.getPreferredSize().width);
-        assertEquals(1200, panel.getWidth());
-    }
-
-    public void testResultsAndPreviewPanelCapsPreviewWidthWhenDividerIsDragged() {
-        JScrollPane resultScrollPane = UnifiedSearchPopup.createResultListScrollPane(new JBList<>());
-        JPanel previewPanel = new JPanel();
-        JSplitPane panel = UnifiedSearchPopup.createResultsAndPreviewPanel(resultScrollPane, previewPanel);
-
-        panel.setBounds(0, 0, 1200, 450);
-        panel.setDividerLocation(100);
-        panel.doLayout();
-
-        assertTrue(previewPanel.getWidth() <= UnifiedSearchPreview.MAX_PREVIEW_WIDTH);
-        assertTrue(panel.getDividerLocation() >= 1200 - panel.getDividerSize() - UnifiedSearchPreview.MAX_PREVIEW_WIDTH);
     }
 
     private RestServiceItem createItem(String methodText, String url) {

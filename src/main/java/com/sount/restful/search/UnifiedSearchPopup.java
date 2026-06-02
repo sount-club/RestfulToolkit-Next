@@ -15,31 +15,28 @@ import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBList;
 import com.intellij.util.Alarm;
 import com.intellij.util.ui.JBUI;
-import com.intellij.util.ui.UIUtil;
+import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
-import javax.swing.plaf.basic.BasicSplitPaneDivider;
-import javax.swing.plaf.basic.BasicSplitPaneUI;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.beans.PropertyChangeEvent;
+import java.util.*;
 import java.util.List;
 
 public final class UnifiedSearchPopup {
 
     private static final int SEARCH_DEBOUNCE_MS = 150;
-    private static final int POPUP_WIDTH = 900;
-    private static final int POPUP_HEIGHT = 450;
-    private static final int RESULT_LIST_WIDTH = 520;
-    private static final int INITIAL_DIVIDER_LOCATION = 560;
-    private static final String ONLY_CURRENT_MODULE_KEY = "GoToRestService.OnlyCurrentModule";
+    private static final int POPUP_WIDTH = 960;
+    private static final int POPUP_HEIGHT = 480;
+    private static final String SELECTED_MODULE_KEY = "GoToRestService.SelectedModule";
 
     private UnifiedSearchPopup() {
     }
@@ -65,12 +62,9 @@ public final class UnifiedSearchPopup {
         resultList.setCellRenderer(renderer);
         resultList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        // Preview panel on the right
-        UnifiedSearchPreview preview = new UnifiedSearchPreview(project);
-        preview.setPreferredSize(JBUI.size(280, 0));
-
-        // Keep preview bounded on the right so resizing the popup does not create sideways dragging.
-        JSplitPane resultsAndPreviewPanel = createResultsAndPreviewPanel(createResultListScrollPane(resultList), preview);
+        // Full-width result list scroll pane
+        JScrollPane resultScrollPane = ScrollPaneFactory.createScrollPane(resultList);
+        resultScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setPreferredSize(JBUI.size(POPUP_WIDTH, POPUP_HEIGHT));
@@ -82,47 +76,110 @@ public final class UnifiedSearchPopup {
         searchPanel.add(searchLabel, BorderLayout.WEST);
         searchPanel.add(searchField, BorderLayout.CENTER);
 
-        // "Only This Module" checkbox
-        JCheckBox onlyModuleCheckbox = new JCheckBox("Only This Module");
-        onlyModuleCheckbox.setFont(onlyModuleCheckbox.getFont().deriveFont(Font.PLAIN, onlyModuleCheckbox.getFont().getSize() - 1f));
-        boolean moduleAvailable = currentModule != null;
-        onlyModuleCheckbox.setEnabled(moduleAvailable);
-        onlyModuleCheckbox.setSelected(moduleAvailable && props.isTrueValue(ONLY_CURRENT_MODULE_KEY));
+        // Method filter buttons
+        JPanel methodFilterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        methodFilterPanel.setOpaque(false);
+        methodFilterPanel.setBorder(JBUI.Borders.empty(0, 4));
+        ButtonGroup methodGroup = new ButtonGroup();
+        EnumMap<HttpMethod, JToggleButton> methodButtons = new EnumMap<>(HttpMethod.class);
 
-        JLabel hintLabel = new JLabel("Enter: navigate  |  Esc: close  |  Ctrl+D: favorite");
+        JToggleButton allBtn = createFilterButton("All", methodGroup, methodFilterPanel);
+        allBtn.setSelected(true);
+        for (HttpMethod m : new HttpMethod[]{HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.PATCH}) {
+            methodButtons.put(m, createFilterButton(m.name(), methodGroup, methodFilterPanel));
+        }
+
+        // Module filter dropdown (includes "Current Module: xxx" when available)
+        JPanel moduleFilterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        moduleFilterPanel.setOpaque(false);
+        JLabel moduleLabel = new JLabel("Module: ");
+        moduleLabel.setFont(moduleLabel.getFont().deriveFont(Font.PLAIN, moduleLabel.getFont().getSize() - 1f));
+        moduleFilterPanel.add(moduleLabel);
+        JComboBox<String> moduleCombo = new JComboBox<>();
+        moduleCombo.setFont(moduleCombo.getFont().deriveFont(Font.PLAIN, moduleCombo.getFont().getSize() - 1f));
+        moduleCombo.addItem("All Modules");
+        if (currentModule != null) {
+            moduleCombo.addItem("Current Module: " + currentModule.getName());
+        }
+        populateModuleFilter(moduleCombo, index.getItems(), currentModule);
+        // Restore persisted selection
+        String savedModule = props.getValue(SELECTED_MODULE_KEY);
+        if (savedModule != null) {
+            for (int i = 0; i < moduleCombo.getItemCount(); i++) {
+                if (savedModule.equals(moduleCombo.getItemAt(i))) {
+                    moduleCombo.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+        moduleFilterPanel.add(moduleCombo);
+
+        JLabel hintLabel = new JLabel("Enter 跳转 · Ctrl+C 复制路径 · Esc 关闭");
         hintLabel.setFont(hintLabel.getFont().deriveFont(Font.PLAIN, hintLabel.getFont().getSize() - 2f));
         hintLabel.setForeground(JBColor.GRAY);
-        JPanel bottomBar = new JPanel(new BorderLayout());
-        bottomBar.setOpaque(false);
-        bottomBar.add(onlyModuleCheckbox, BorderLayout.WEST);
         JPanel hintPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0));
         hintPanel.setOpaque(false);
         hintPanel.add(hintLabel);
-        bottomBar.add(hintPanel, BorderLayout.EAST);
+
+        // Filter bar: method buttons + module dropdown
+        JPanel filterBar = new JPanel(new BorderLayout());
+        filterBar.setOpaque(false);
+        filterBar.add(methodFilterPanel, BorderLayout.WEST);
+        filterBar.add(moduleFilterPanel, BorderLayout.EAST);
 
         JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.add(searchPanel, BorderLayout.CENTER);
-        topPanel.add(bottomBar, BorderLayout.SOUTH);
+        topPanel.add(searchPanel, BorderLayout.NORTH);
+        topPanel.add(filterBar, BorderLayout.CENTER);
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // Results and preview in center
-        mainPanel.add(resultsAndPreviewPanel, BorderLayout.CENTER);
+        // Full-width results in center
+        mainPanel.add(resultScrollPane, BorderLayout.CENTER);
 
         // Status bar at bottom
         JLabel statusLabel = new JLabel(" ");
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.PLAIN, statusLabel.getFont().getSize() - 2f));
         statusLabel.setForeground(JBColor.GRAY);
-        statusLabel.setBorder(JBUI.Borders.empty(2, 8));
-        mainPanel.add(statusLabel, BorderLayout.SOUTH);
+
+        JButton searchAllModulesBtn = new JButton("搜索全部模块");
+        searchAllModulesBtn.setFont(searchAllModulesBtn.getFont().deriveFont(Font.PLAIN, searchAllModulesBtn.getFont().getSize() - 2f));
+        searchAllModulesBtn.setMargin(new Insets(2, 8, 2, 8));
+        searchAllModulesBtn.setVisible(false);
+        searchAllModulesBtn.addActionListener(e -> {
+            moduleCombo.setSelectedIndex(0); // "All Modules"
+        });
+
+        JPanel statusBar = new JPanel(new BorderLayout());
+        statusBar.setOpaque(false);
+        statusBar.setBorder(JBUI.Borders.empty(2, 8));
+        statusBar.add(statusLabel, BorderLayout.CENTER);
+        statusBar.add(searchAllModulesBtn, BorderLayout.EAST);
+
+        // Selection summary bar
+        JLabel selectionLabel = new JLabel(" ");
+        selectionLabel.setFont(selectionLabel.getFont().deriveFont(Font.PLAIN, selectionLabel.getFont().getSize() - 1f));
+        selectionLabel.setForeground(JBColor.GRAY);
+        JPanel selectionBar = new JPanel(new BorderLayout());
+        selectionBar.setOpaque(false);
+        selectionBar.setBorder(JBUI.Borders.empty(2, 8));
+        selectionBar.add(selectionLabel, BorderLayout.WEST);
+        selectionBar.add(hintPanel, BorderLayout.EAST);
+
+        // Bottom panel combining status and selection
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(statusBar, BorderLayout.NORTH);
+        bottomPanel.add(selectionBar, BorderLayout.SOUTH);
+        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
         // Search debounce
         Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
 
+        // Resolve the active method filter from button group
         Runnable runSearch = () -> {
             String text = searchField.getText();
-            Module filterModule = (currentModule != null && onlyModuleCheckbox.isSelected()) ? currentModule : null;
-            performSearch(text, index, listModel, resultList, statusLabel, filterModule,
-                    renderer, history.getSelectedEndpointKey(text),
+            HttpMethod methodFilter = resolveSelectedMethod(methodGroup, methodButtons);
+            Module filterModule = resolveSelectedModule(moduleCombo, currentModule, index.getItems());
+            performSearch(text, index, listModel, resultList, statusLabel, searchAllModulesBtn,
+                    filterModule, renderer, methodFilter, history.getSelectedEndpointKey(text),
                     history.getSelectedIndex(text), history.getFirstVisibleIndex(text), history.getScrollY(text));
         };
         Runnable doSearch = () -> {
@@ -140,8 +197,6 @@ public final class UnifiedSearchPopup {
                 .setMinSize(JBUI.size(600, 350))
                 .createPopup();
 
-        preview.setOnNavigate(() -> popup.closeOk(null));
-
         Runnable indexListener = () -> SwingUtilities.invokeLater(runSearch);
         index.addListener(indexListener);
 
@@ -155,8 +210,9 @@ public final class UnifiedSearchPopup {
                 searchAlarm.cancelAllRequests();
                 index.removeListener(indexListener);
                 recordWindowState(history, searchField.getText(), resultList);
-                // Persist checkbox state
-                props.setValue(ONLY_CURRENT_MODULE_KEY, onlyModuleCheckbox.isSelected());
+                // Persist selected module
+                Object selected = moduleCombo.getSelectedItem();
+                props.setValue(SELECTED_MODULE_KEY, selected != null ? selected.toString() : null);
             }
         });
 
@@ -168,23 +224,30 @@ public final class UnifiedSearchPopup {
             }
         });
 
-        // Checkbox change triggers re-search
-        onlyModuleCheckbox.addActionListener(e -> {
-            props.setValue(ONLY_CURRENT_MODULE_KEY, onlyModuleCheckbox.isSelected());
+        // Method filter buttons trigger re-search
+        for (AbstractButton btn : Collections.list(methodGroup.getElements())) {
+            btn.addActionListener(e -> {
+                searchAlarm.cancelAllRequests();
+                searchAlarm.addRequest(doSearch, 0);
+            });
+        }
+
+        // Module combo triggers re-search
+        moduleCombo.addActionListener(e -> {
             searchAlarm.cancelAllRequests();
             searchAlarm.addRequest(doSearch, 0);
         });
 
-        // Selection listener for preview
+        // Selection listener for summary bar
         resultList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 SearchResult selected = resultList.getSelectedValue();
                 if (selected != null) {
                     history.recordSelectedEndpoint(searchField.getText(), selected.item());
                     recordWindowState(history, searchField.getText(), resultList);
-                    preview.showPreview(selected.item());
+                    updateSelectionSummary(selectionLabel, selected.item());
                 } else {
-                    preview.clearPreview();
+                    selectionLabel.setText(" ");
                 }
             }
         });
@@ -196,9 +259,9 @@ public final class UnifiedSearchPopup {
                 if (e.getKeyCode() == KeyEvent.VK_ENTER) {
                     e.consume();
                     navigateToSelected(resultList, popup, history);
-                } else if (e.getKeyCode() == KeyEvent.VK_D && e.isControlDown()) {
+                } else if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
                     e.consume();
-                    toggleFavorite(resultList, history);
+                    copySelectedPath(resultList);
                 }
             }
         });
@@ -229,9 +292,9 @@ public final class UnifiedSearchPopup {
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
                     e.consume();
                     moveSelectionFromSearchField(resultList, 1);
-                } else if (e.getKeyCode() == KeyEvent.VK_D && e.isControlDown()) {
+                } else if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
                     e.consume();
-                    toggleFavorite(resultList, history);
+                    copySelectedPath(resultList);
                 }
             }
         });
@@ -247,7 +310,6 @@ public final class UnifiedSearchPopup {
         } else {
             popup.showInFocusCenter();
         }
-        SwingUtilities.invokeLater(() -> resultsAndPreviewPanel.setDividerLocation(JBUI.scale(INITIAL_DIVIDER_LOCATION)));
 
         // Initial search
         runSearch.run();
@@ -256,6 +318,81 @@ public final class UnifiedSearchPopup {
         searchField.getTextEditor().selectAll();
     }
 
+    // --- Filter helpers ---
+
+    private static JToggleButton createFilterButton(String text, ButtonGroup group, JPanel panel) {
+        JToggleButton btn = new JToggleButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                if (isSelected()) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setColor(new Color(0x4A90D9));
+                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 4, 4);
+                    g2.dispose();
+                }
+            }
+        };
+        btn.setFont(btn.getFont().deriveFont(Font.PLAIN, btn.getFont().getSize() - 2f));
+        btn.setMargin(new Insets(2, 6, 2, 6));
+        btn.setFocusPainted(false);
+
+        btn.addChangeListener(e -> btn.repaint());
+
+        group.add(btn);
+        panel.add(btn);
+        return btn;
+    }
+
+    private static @Nullable HttpMethod resolveSelectedMethod(ButtonGroup group, EnumMap<HttpMethod, JToggleButton> buttons) {
+        for (Map.Entry<HttpMethod, JToggleButton> entry : buttons.entrySet()) {
+            if (entry.getValue().isSelected()) {
+                return entry.getKey();
+            }
+        }
+        return null; // "All" selected
+    }
+
+    private static @Nullable Module resolveSelectedModule(@NotNull JComboBox<String> combo,
+                                                          @Nullable Module currentModule,
+                                                          @NotNull List<RestServiceItem> items) {
+        Object selected = combo.getSelectedItem();
+        if (selected == null || "All Modules".equals(selected)) return null;
+        String selectedStr = selected.toString();
+        // "Current Module: xxx" → use currentModule
+        if (selectedStr.startsWith("Current Module:") && currentModule != null) {
+            return currentModule;
+        }
+        // Otherwise find by module name
+        for (RestServiceItem item : items) {
+            if (selectedStr.equals(item.getModuleName())) {
+                return item.getModule();
+            }
+        }
+        return null;
+    }
+
+    private static void populateModuleFilter(@NotNull JComboBox<String> combo,
+                                              @NotNull List<RestServiceItem> items,
+                                              @Nullable Module currentModule) {
+        Set<String> modules = new LinkedHashSet<>();
+        for (RestServiceItem item : items) {
+            String name = item.getModuleName();
+            if (name != null && !name.isEmpty()) {
+                // Skip current module if it's already shown as "Current Module: xxx"
+                if (currentModule != null && name.equals(currentModule.getName())) continue;
+                modules.add(name);
+            }
+        }
+        List<String> sorted = new ArrayList<>(modules);
+        Collections.sort(sorted);
+        for (String m : sorted) {
+            combo.addItem(m);
+        }
+    }
+
+    // --- Existing helpers ---
+
     static @NotNull String resolveInitialSearchText(@Nullable String initialText, @NotNull List<String> recentQueries) {
         if (initialText != null && !initialText.isBlank()) {
             return initialText;
@@ -263,99 +400,14 @@ public final class UnifiedSearchPopup {
         return recentQueries.isEmpty() ? "" : recentQueries.get(0);
     }
 
-    static @NotNull JScrollPane createResultListScrollPane(@NotNull JBList<SearchResult> resultList) {
-        resultList.setFixedCellWidth(JBUI.scale(RESULT_LIST_WIDTH));
-        JScrollPane resultScrollPane = ScrollPaneFactory.createScrollPane(resultList);
-        resultScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-        resultScrollPane.setPreferredSize(JBUI.size(RESULT_LIST_WIDTH, 0));
-        resultScrollPane.setMinimumSize(JBUI.emptySize());
-        return resultScrollPane;
-    }
-
-    static @NotNull JSplitPane createResultsAndPreviewPanel(@NotNull JScrollPane resultScrollPane,
-                                                            @NotNull JComponent preview) {
-        resultScrollPane.setMinimumSize(JBUI.emptySize());
-        preview.setMinimumSize(JBUI.emptySize());
-        preview.setMaximumSize(new Dimension(UnifiedSearchPreview.MAX_PREVIEW_WIDTH, Integer.MAX_VALUE));
-
-        JSplitPane splitPane = new BoundedPreviewSplitPane(resultScrollPane, preview,
-                UnifiedSearchPreview.MAX_PREVIEW_WIDTH);
-        splitPane.setUI(new BasicSplitPaneUI() {
-            @Override
-            public BasicSplitPaneDivider createDefaultDivider() {
-                BasicSplitPaneDivider divider = new BasicSplitPaneDivider(this);
-                divider.setBorder(JBUI.Borders.customLine(JBColor.border()));
-                divider.setBackground(UIUtil.getPanelBackground());
-                return divider;
-            }
-        });
-        splitPane.setContinuousLayout(true);
-        splitPane.setResizeWeight(1.0);
-        splitPane.setBorder(JBUI.Borders.empty());
-        splitPane.setDividerLocation(JBUI.scale(INITIAL_DIVIDER_LOCATION));
-        splitPane.setMinimumSize(JBUI.emptySize());
-        return splitPane;
-    }
-
-    private static final class BoundedPreviewSplitPane extends JSplitPane {
-        private final int maxPreviewWidth;
-        private boolean adjustingDivider;
-
-        private BoundedPreviewSplitPane(@NotNull JComponent resultScrollPane,
-                                        @NotNull JComponent preview,
-                                        int maxPreviewWidth) {
-            super(JSplitPane.HORIZONTAL_SPLIT, resultScrollPane, preview);
-            this.maxPreviewWidth = maxPreviewWidth;
-            addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, this::clampDividerLocation);
-        }
-
-        @Override
-        public void doLayout() {
-            super.doLayout();
-            clampDividerLocation(null);
-        }
-
-        private void clampDividerLocation(@Nullable PropertyChangeEvent event) {
-            if (adjustingDivider) {
-                return;
-            }
-            int boundedLocation = boundedDividerLocation(getDividerLocation());
-            if (boundedLocation == getDividerLocation()) {
-                return;
-            }
-            adjustingDivider = true;
-            try {
-                setDividerLocation(boundedLocation);
-            } finally {
-                adjustingDivider = false;
-            }
-        }
-
-        private int boundedDividerLocation(int dividerLocation) {
-            int width = getWidth();
-            if (width <= 0) {
-                return dividerLocation;
-            }
-            int minimumLocation = Math.max(0, width - getDividerSize() - maxPreviewWidth);
-            return Math.max(dividerLocation, minimumLocation);
-        }
-    }
-
     private static void performSearch(@NotNull String text, @NotNull EndpointIndex index,
                                       @NotNull DefaultListModel<SearchResult> model,
                                       @NotNull JBList<SearchResult> resultList,
                                       @NotNull JLabel statusLabel,
-                                      @Nullable Module filterModule,
-                                      @NotNull UnifiedSearchRenderer renderer) {
-        performSearch(text, index, model, resultList, statusLabel, filterModule, renderer, null, null, null, null);
-    }
-
-    private static void performSearch(@NotNull String text, @NotNull EndpointIndex index,
-                                      @NotNull DefaultListModel<SearchResult> model,
-                                      @NotNull JBList<SearchResult> resultList,
-                                      @NotNull JLabel statusLabel,
+                                      @NotNull JButton searchAllModulesBtn,
                                       @Nullable Module filterModule,
                                       @NotNull UnifiedSearchRenderer renderer,
+                                      @Nullable HttpMethod methodFilter,
                                       @Nullable String preferredEndpointKey,
                                       @Nullable Integer preferredSelectionIndex,
                                       @Nullable Integer preferredFirstVisibleIndex,
@@ -374,17 +426,29 @@ public final class UnifiedSearchPopup {
         }
         final int totalCount = searchableItems.size();
         SearchQuery query = SearchQuery.parse(text);
-        List<SearchResult> results = SearchEngine.search(query, searchableItems);
 
-        // Extract highlight pattern from query
-        String highlightPattern = null;
-        if (query.urlPattern() != null) {
-            highlightPattern = query.urlPattern();
-        } else if (query.rawInput() != null && !query.rawInput().isEmpty()) {
-            highlightPattern = query.rawInput();
+        // If method filter is set but query didn't parse it, combine
+        if (methodFilter != null && query.methodFilter() == null) {
+            query = new SearchQuery(query.rawInput(), methodFilter, query.urlPattern(),
+                    query.classNamePattern(), query.methodNamePattern(), query.tokens());
         }
-        final String finalPattern = highlightPattern;
-        renderer.setHighlightPattern(finalPattern);
+
+        SearchHistory history = SearchHistory.getInstance(index.getProject());
+        List<SearchResult> results;
+
+        // Empty query: show recently accessed endpoints (top 20)
+        if (text.isEmpty() && methodFilter == null) {
+            results = searchableItems.stream()
+                    .sorted(Comparator.comparingLong(history::getLastAccessTime).reversed())
+                    .limit(20)
+                    .map(item -> new SearchResult(item, 0, null))
+                    .collect(java.util.stream.Collectors.toList());
+        } else {
+            results = SearchEngine.search(query, searchableItems, 200, history::getUseCount);
+        }
+
+        // Set highlight tokens for renderer
+        renderer.setHighlightTokens(query.tokens());
 
         SwingUtilities.invokeLater(() -> {
             model.clear();
@@ -396,11 +460,20 @@ public final class UnifiedSearchPopup {
                 selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
             }
 
-            statusLabel.setText(buildStatusText(text, results.size(), totalCount, indexReady));
+            statusLabel.setText(buildStatusText(text, results.size(), totalCount, indexReady,
+                    filterModule, methodFilter));
+
+            // Show "搜索全部模块" button when no results and a module filter is active
+            searchAllModulesBtn.setVisible(results.isEmpty() && filterModule != null && !text.isEmpty());
         });
     }
 
     static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady) {
+        return buildStatusText(text, resultCount, totalCount, indexReady, null, null);
+    }
+
+    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady,
+                                            @Nullable Module filterModule, @Nullable HttpMethod methodFilter) {
         if (!indexReady && resultCount == 0) {
             if (text.isEmpty()) {
                 return "Indexing REST endpoints... Results will refresh automatically.";
@@ -416,16 +489,27 @@ public final class UnifiedSearchPopup {
         }
 
         if (resultCount == 0) {
-            String statusText = "No results found for \"" + text + "\"";
-            if (totalCount > 0) {
-                statusText += " (" + totalCount + " endpoints indexed)";
-            } else {
-                statusText += ". Index may be loading, please wait...";
+            StringBuilder sb = new StringBuilder();
+            sb.append("未找到匹配 \"").append(text).append("\" 的接口");
+            if (methodFilter != null) {
+                sb.append(" [Method: ").append(methodFilter.name()).append("]");
             }
-            return statusText;
+            if (filterModule != null) {
+                sb.append(" · 模块: ").append(filterModule.getName());
+            }
+            sb.append("。可以尝试: 部分路径(user/login) · 方法名(tryLogin) · 中文描述(用户登录)");
+            return sb.toString();
         }
 
-        return resultCount + " results found";
+        StringBuilder status = new StringBuilder();
+        status.append(resultCount).append(" results found");
+        if (methodFilter != null) {
+            status.append(" [").append(methodFilter.name()).append("]");
+        }
+        if (filterModule != null) {
+            status.append(" in ").append(filterModule.getName());
+        }
+        return status.toString();
     }
 
     static int findSelectionIndex(@NotNull List<SearchResult> results, @Nullable String preferredEndpointKey) {
@@ -586,12 +670,32 @@ public final class UnifiedSearchPopup {
         }
     }
 
-    private static void toggleFavorite(@NotNull JBList<SearchResult> resultList,
-                                       @NotNull SearchHistory history) {
+    private static void copySelectedPath(@NotNull JBList<SearchResult> resultList) {
         SearchResult selected = resultList.getSelectedValue();
         if (selected != null) {
-            history.toggleFavorite(selected.item());
-            resultList.repaint();
+            String path = selected.item().getUrl();
+            if (path != null) {
+                Toolkit.getDefaultToolkit().getSystemClipboard()
+                        .setContents(new StringSelection(path), null);
+            }
         }
+    }
+
+    private static void updateSelectionSummary(@NotNull JLabel selectionLabel, @NotNull RestServiceItem item) {
+        String method = item.getMethod() != null ? item.getMethod().name() : "?";
+        String url = item.getUrl() != null ? item.getUrl() : "";
+        String controllerName = item.getControllerName();
+        String methodName = item.getMethodName();
+        String moduleName = item.getModuleName();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("当前选中：").append(method).append(" ").append(url);
+        if (controllerName != null && !controllerName.isEmpty() && methodName != null && !methodName.isEmpty()) {
+            sb.append(" · ").append(controllerName).append("#").append(methodName);
+        }
+        if (moduleName != null && !moduleName.isEmpty()) {
+            sb.append(" · ").append(moduleName);
+        }
+        selectionLabel.setText(sb.toString());
     }
 }
