@@ -41,6 +41,16 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <p><strong>RestfulToolkit Next 1.1.0</strong></p>
+            <ul>
+              <li>Added a unified REST endpoint search popup with path, HTTP method, module, controller, method name, and description matching</li>
+              <li>Supported controller-method queries such as <code>UserController#getUser</code> and <code>UserController getUser</code></li>
+              <li>Preserved duplicate method/path endpoints from different controllers or modules instead of hiding them during search</li>
+              <li>Improved startup behavior by showing indexing status and refreshing search results and module filters after endpoint indexing completes</li>
+              <li>Added English and Chinese localization for the search popup, result list, preview panel, and status messages</li>
+              <li>Improved search performance by caching selection keys, optimizing recent endpoint ranking, and reducing renderer allocations</li>
+            </ul>
+
             <p><strong>RestfulToolkit Next 1.0.1</strong></p>
             <ul>
               <li>Grouped editor context-menu actions under the RestfulToolkit Next submenu</li>
@@ -48,6 +58,13 @@ intellijPlatform {
               <li>Improved RestServices request panel with searchable endpoints, editable headers, body modes, and response metadata</li>
             </ul>
         """.trimIndent()
+    }
+
+    pluginVerification {
+        ides {
+            // 推荐方式：自动使用兼容当前插件设置的推荐版本
+            recommended()
+        }
     }
 }
 

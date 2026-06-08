@@ -1,6 +1,5 @@
 package com.sount.restful.search;
 
-import com.intellij.ProjectTopics;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
@@ -154,7 +153,7 @@ public class EndpointIndex implements Disposable {
     }
 
     private void registerRootsListener() {
-        myProject.getMessageBus().connect(this).subscribe(ProjectTopics.PROJECT_ROOTS, new ModuleRootListener() {
+        myProject.getMessageBus().connect(this).subscribe(ModuleRootListener.TOPIC, new ModuleRootListener() {
             @Override
             public void rootsChanged(@NotNull ModuleRootEvent event) {
                 LOG.info("Project roots changed, scheduling endpoint index rebuild...");

@@ -105,7 +105,7 @@ public class RestServiceItem implements NavigationItem {
         // Compute descriptor inside ReadAction, navigate outside.
         // EditSourceUtil.getDescriptor() → getTextOffset() needs read lock.
         // OpenFileDescriptor.navigate() uses WriteIntentReadAction internally.
-        Navigatable navDescriptor = ReadAction.compute(() -> {
+        Navigatable navDescriptor = ReadAction.computeBlocking(() -> {
             if (psiElement == null || !psiElement.isValid()) return null;
             Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
             if (descriptor != null) return descriptor;
@@ -120,10 +120,10 @@ public class RestServiceItem implements NavigationItem {
     public boolean canNavigate() {
         if (navigationElement != null) {
             // PSI access (isValid, canNavigate) requires read lock
-            return ReadAction.compute(() -> psiElement != null && psiElement.isValid() && navigationElement.canNavigate());
+            return ReadAction.computeBlocking(() -> psiElement != null && psiElement.isValid() && navigationElement.canNavigate());
         }
         if (psiElement == null) return false;
-        return ReadAction.compute(() -> {
+        return ReadAction.computeBlocking(() -> {
             if (!psiElement.isValid()) return false;
             Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
             return descriptor != null && descriptor.canNavigate();
