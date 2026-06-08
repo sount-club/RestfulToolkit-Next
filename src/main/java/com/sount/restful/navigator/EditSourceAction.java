@@ -4,7 +4,7 @@ import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.project.DumbAware;
-import com.intellij.util.PsiNavigateUtil;
+import com.intellij.psi.PsiElement;
 import com.sount.restful.navigation.action.RestServiceItem;
 import com.sount.utils.RestServiceDataKeys;
 
@@ -21,11 +21,12 @@ public class EditSourceAction extends AnAction implements DumbAware {
   @Override
   public void actionPerformed(AnActionEvent e) {
     List<RestServiceItem> serviceItems = RestServiceDataKeys.SERVICE_ITEMS.getData(e.getDataContext());
+    if (serviceItems == null) return;
 
     for (RestServiceItem serviceItem : serviceItems) {
-      PsiNavigateUtil.navigate(serviceItem.getPsiElement());
+      // navigate() internally checks isValid() inside ReadAction — no need to check here.
+      serviceItem.navigate(true);
     }
-
   }
 
 

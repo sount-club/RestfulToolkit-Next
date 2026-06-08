@@ -8,12 +8,16 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiElement;
+import com.intellij.util.Alarm;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.common.KtFunctionHelper;
 import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.search.SearchEngine;
+import com.sount.restful.search.SearchQuery;
+import com.sount.restful.search.SearchResult;
 import org.apache.commons.lang3.StringUtils;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.Nullable;
@@ -48,8 +52,11 @@ public class RestServiceStructure {
     private int serviceCount = 0;
     private int totalServiceCount = 0;
     private final AtomicLong detailRequestSequence = new AtomicLong();
+    private final Alarm filterAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+    private static final int FILTER_DEBOUNCE_MS = 200;
     private List<RestServiceProject> allProjects = Collections.emptyList();
     private String filterText = "";
+    private String lastAppliedFilter = "";
 
     public RestServiceStructure(Project project,
                                 RestServiceProjectsManager projectsManager,
@@ -137,8 +144,16 @@ public class RestServiceStructure {
     }
 
     public void setFilterText(String filterText) {
-        this.filterText = filterText == null ? "" : filterText.trim();
-        rebuildTree();
+        String newFilter = filterText == null ? "" : filterText.trim();
+        if (newFilter.equals(this.filterText)) return;
+        this.filterText = newFilter;
+
+        filterAlarm.cancelAllRequests();
+        filterAlarm.addRequest(() -> {
+            if (this.filterText.equals(lastAppliedFilter)) return;
+            lastAppliedFilter = this.filterText;
+            rebuildTree();
+        }, FILTER_DEBOUNCE_MS);
     }
 
     private void rebuildTree() {
@@ -170,11 +185,11 @@ public class RestServiceStructure {
             return serviceItems;
         }
 
-        List<RestServiceItem> filtered = new ArrayList<>();
-        for (RestServiceItem serviceItem : serviceItems) {
-            if (serviceItem.matches(filterText)) {
-                filtered.add(serviceItem);
-            }
+        SearchQuery query = SearchQuery.parse(filterText);
+        List<SearchResult> results = SearchEngine.search(query, serviceItems, Integer.MAX_VALUE);
+        List<RestServiceItem> filtered = new ArrayList<>(results.size());
+        for (SearchResult result : results) {
+            filtered.add(result.item());
         }
         return filtered;
     }
@@ -449,18 +464,8 @@ public class RestServiceStructure {
         @Override
         public void handleDoubleClick(JTree tree, InputEvent inputEvent) {
             RestServiceItem serviceItem = myServiceItem;
-            PsiElement psiElement = serviceItem.getPsiElement();
-
-            if (!psiElement.isValid()) {
-                LOG.info("psiMethod is invalid: ");
-                LOG.info(psiElement.toString());
-                RestServicesNavigator.getInstance(serviceItem.getModule().getProject()).scheduleStructureUpdate();
-                return;
-            }
-
-            if ((psiElement.getLanguage() == JavaLanguage.INSTANCE
-                    || (psiElement.getLanguage() == KotlinLanguage.INSTANCE && psiElement instanceof KtNamedFunction))
-                    && serviceItem.canNavigate()) {
+            // canNavigate() and navigate() internally wrap PSI access in ReadAction.
+            if (serviceItem.canNavigate()) {
                 serviceItem.navigate(true);
             }
         }

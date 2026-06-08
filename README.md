@@ -13,6 +13,17 @@
 
 ---
 
+## 1.1.0 更新
+
+- URL 跳转面板升级为统一搜索窗口，支持按路径、HTTP Method、模块名、Controller、方法名和接口描述搜索
+- 支持 `UserController#getUser`、`UserController getUser` 等 Controller / Method 组合查询
+- 同 Method + Path 的重复接口不再被隐藏，搜索结果会保留不同 Controller / Module 的来源信息
+- 搜索窗口在项目启动和 IDE 索引期间会显示索引中状态，索引完成后自动刷新接口结果和模块过滤器
+- 搜索窗口文案支持中英文多语言，并集中维护资源 key
+- 优化搜索性能：缓存搜索选择 key、空搜索最近访问列表使用 Top 20 策略、结果渲染复用模块标签组件
+
+---
+
 ## 1.0.1 更新
 
 - 编辑器右键菜单统一收拢到 `RestfulToolkit Next` 子菜单
@@ -27,6 +38,7 @@
 | 功能 | 说明 |
 |------|------|
 | **URL 跳转** | `Ctrl + \` / `Cmd + \` 输入 URL 快速定位到接口方法定义 |
+| **统一搜索** | 通过 URL 跳转面板搜索 REST 接口，支持路径、模块、Controller、方法名和描述 |
 | **服务树浏览** | 通过 *RestServices* 工具窗口按项目结构浏览 REST 接口，并支持搜索过滤 |
 | **URL 生成** | 在接口方法上右键生成并复制完整 URL / 相对路径 URL |
 | **参数生成** | 生成并复制 Query 参数（Key-Value）和 RequestBody（JSON） |
@@ -61,8 +73,15 @@
 ### 1. 根据 URL 跳转到接口定义
 
 - 快捷键：`Ctrl + \` 或 `Ctrl + Alt + N`（Windows/Linux）、`Command + \`（macOS）
-- 弹出 URL 导航面板，输入接口路径即可跳转
+- 弹出统一搜索窗口，输入接口路径即可跳转
 - 如果剪贴板中已有 HTTP URL，会自动作为预填内容
+- 搜索支持：
+  - 路径片段，例如 `/api/users` 或 `users`
+  - HTTP Method，例如 `GET /api/users`
+  - Controller / Method，例如 `UserController#getUser` 或 `UserController getUser`
+  - 模块名和接口描述
+- 当多个模块或 Controller 暴露相同 Method + Path 时，搜索结果会同时显示，副信息用于区分来源
+- 项目刚启动或 IDE 正在索引时，窗口会显示索引中状态；索引完成后会自动刷新结果和模块列表
 
 ### 2. 浏览 REST 服务树
 
@@ -101,6 +120,12 @@
 - `Body = FORM` 时发送 `application/x-www-form-urlencoded`
 - 编辑区内置 `Format` 和 `Template` 快捷操作，注释示例不会被真实发送
 
+## 多语言
+
+- 搜索窗口、结果列表、预览区和状态栏文案支持英文与中文资源
+- 资源文件位于 `src/main/resources/RestfulToolkitBundle.properties` 和 `src/main/resources/RestfulToolkitBundle_zh.properties`
+- 资源 key 统一维护在 `RestfulToolkitBundle.Keys` 中，新增窗口文案时应先补充 key 常量，再更新中英文资源文件
+
 ## 相比原项目的技术改进
 
 - 全面迁移已废弃的 IntelliJ Platform API，确保与未来版本兼容：
@@ -121,6 +146,8 @@
 - 支持 Kotlin K2 编译模式
 - 构建系统升级至 IntelliJ Platform Gradle Plugin 2.x
 - 目标平台 IntelliJ IDEA 2026.1+（Build 261+）
+- REST endpoint 索引在 Smart Mode 下异步构建，避免启动期阻塞 UI，并在索引完成后自动刷新搜索窗口
+- 搜索路径避免高频 PSI 读取，预计算 Controller、方法名、描述和 lowercase 搜索字段
 
 ## 兼容性
 

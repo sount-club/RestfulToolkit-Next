@@ -29,6 +29,7 @@ import java.util.Map;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.PATH_VARIABLE;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_BODY;
 import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_PARAM;
+import static com.sount.restful.annotations.SpringControllerAnnotation.REST_CONTROLLER;
 
 /**
  * PsiMethod处理类
@@ -182,12 +183,55 @@ public class PsiMethodHelper {
                 parameterList.add(parameter);
             }
 
+            if (!requestBodyFound && pathVariableAnno == null && requestParamAnno == null && isImplicitRestControllerBodyParameter(psiParameter)) {
+                requestBodyFound = true;
+            }
+
             if (pathVariableAnno == null && requestParamAnno == null) {
                 Parameter parameter = new Parameter(paramType, paramName).requestBodyFound(requestBodyFound);
                 parameterList.add(parameter);
             }
         }
         return parameterList;
+    }
+
+    private boolean isImplicitRestControllerBodyParameter(@NotNull PsiParameter psiParameter) {
+        PsiClass containingClass = psiMethod.getContainingClass();
+        if (containingClass == null || containingClass.getModifierList() == null) {
+            return false;
+        }
+        if (containingClass.getModifierList().findAnnotation(REST_CONTROLLER.getQualifiedName()) == null) {
+            return false;
+        }
+
+        String shortTypeName = psiParameter.getType().getPresentableText();
+        // Primitive and common wrapper types are not request body
+        if (PsiClassHelper.getJavaBaseTypeDefaultValue(shortTypeName) != null) {
+            return false;
+        }
+        // Spring framework injected types are not request body
+        String canonical = psiParameter.getType().getCanonicalText();
+        return !isSpringInjectedType(canonical);
+    }
+
+    private static boolean isSpringInjectedType(@NotNull String fqn) {
+        // Strip generic parameters: "java.util.Map<java.lang.String,java.lang.Object>" → "java.util.Map"
+        String rawType = fqn.contains("<") ? fqn.substring(0, fqn.indexOf('<')) : fqn;
+        return rawType.startsWith("javax.servlet.")
+                || rawType.startsWith("jakarta.servlet.")
+                || rawType.startsWith("org.springframework.web.multipart.")
+                || "java.io.InputStream".equals(rawType)
+                || "java.io.Reader".equals(rawType)
+                || "java.security.Principal".equals(rawType)
+                || "java.util.Locale".equals(rawType)
+                || "java.util.Map".equals(rawType)
+                || "java.util.List".equals(rawType)
+                || "java.util.Set".equals(rawType)
+                || "java.util.Collection".equals(rawType)
+                || "org.springframework.ui.Model".equals(rawType)
+                || "org.springframework.ui.ModelMap".equals(rawType)
+                || "org.springframework.validation.BindingResult".equals(rawType)
+                || "org.springframework.http.HttpEntity".equals(rawType);
     }
 
     public String getAnnotationValue(PsiAnnotation annotation) {
