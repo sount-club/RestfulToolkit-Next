@@ -17,6 +17,8 @@ import com.intellij.util.Alarm;
 import com.intellij.util.ui.JBUI;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.utils.RestfulToolkitBundle;
+import com.sount.utils.RestfulToolkitBundle.Keys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -30,6 +32,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.*;
 import java.util.List;
+import java.util.function.ToLongFunction;
 
 public final class UnifiedSearchPopup {
 
@@ -72,7 +75,7 @@ public final class UnifiedSearchPopup {
         // Search field at top
         JPanel searchPanel = new JPanel(new BorderLayout());
         searchPanel.setBorder(JBUI.Borders.empty(4));
-        JLabel searchLabel = new JLabel(" Search: ");
+        JLabel searchLabel = new JLabel(" " + RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SEARCH_LABEL) + " ");
         searchPanel.add(searchLabel, BorderLayout.WEST);
         searchPanel.add(searchField, BorderLayout.CENTER);
 
@@ -83,7 +86,7 @@ public final class UnifiedSearchPopup {
         ButtonGroup methodGroup = new ButtonGroup();
         EnumMap<HttpMethod, JToggleButton> methodButtons = new EnumMap<>(HttpMethod.class);
 
-        JToggleButton allBtn = createFilterButton("All", methodGroup, methodFilterPanel);
+        JToggleButton allBtn = createFilterButton(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_FILTER_ALL), methodGroup, methodFilterPanel);
         allBtn.setSelected(true);
         for (HttpMethod m : new HttpMethod[]{HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.PATCH}) {
             methodButtons.put(m, createFilterButton(m.name(), methodGroup, methodFilterPanel));
@@ -92,29 +95,17 @@ public final class UnifiedSearchPopup {
         // Module filter dropdown (includes "Current Module: xxx" when available)
         JPanel moduleFilterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         moduleFilterPanel.setOpaque(false);
-        JLabel moduleLabel = new JLabel("Module: ");
+        JLabel moduleLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_LABEL) + " ");
         moduleLabel.setFont(moduleLabel.getFont().deriveFont(Font.PLAIN, moduleLabel.getFont().getSize() - 1f));
         moduleFilterPanel.add(moduleLabel);
         JComboBox<String> moduleCombo = new JComboBox<>();
         moduleCombo.setFont(moduleCombo.getFont().deriveFont(Font.PLAIN, moduleCombo.getFont().getSize() - 1f));
-        moduleCombo.addItem("All Modules");
-        if (currentModule != null) {
-            moduleCombo.addItem("Current Module: " + currentModule.getName());
-        }
-        populateModuleFilter(moduleCombo, index.getItems(), currentModule);
         // Restore persisted selection
         String savedModule = props.getValue(SELECTED_MODULE_KEY);
-        if (savedModule != null) {
-            for (int i = 0; i < moduleCombo.getItemCount(); i++) {
-                if (savedModule.equals(moduleCombo.getItemAt(i))) {
-                    moduleCombo.setSelectedIndex(i);
-                    break;
-                }
-            }
-        }
+        refreshModuleFilter(moduleCombo, index.getItems(), currentModule, savedModule);
         moduleFilterPanel.add(moduleCombo);
 
-        JLabel hintLabel = new JLabel("Enter 跳转 · Ctrl+C 复制路径 · Esc 关闭");
+        JLabel hintLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_KEYBOARD_HINT));
         hintLabel.setFont(hintLabel.getFont().deriveFont(Font.PLAIN, hintLabel.getFont().getSize() - 2f));
         hintLabel.setForeground(JBColor.GRAY);
         JPanel hintPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0));
@@ -140,12 +131,12 @@ public final class UnifiedSearchPopup {
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.PLAIN, statusLabel.getFont().getSize() - 2f));
         statusLabel.setForeground(JBColor.GRAY);
 
-        JButton searchAllModulesBtn = new JButton("搜索全部模块");
+        JButton searchAllModulesBtn = new JButton(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SEARCH_ALL_MODULES));
         searchAllModulesBtn.setFont(searchAllModulesBtn.getFont().deriveFont(Font.PLAIN, searchAllModulesBtn.getFont().getSize() - 2f));
         searchAllModulesBtn.setMargin(new Insets(2, 8, 2, 8));
         searchAllModulesBtn.setVisible(false);
         searchAllModulesBtn.addActionListener(e -> {
-            moduleCombo.setSelectedIndex(0); // "All Modules"
+            moduleCombo.setSelectedIndex(0);
         });
 
         JPanel statusBar = new JPanel(new BorderLayout());
@@ -189,7 +180,7 @@ public final class UnifiedSearchPopup {
 
         JBPopup popup = JBPopupFactory.getInstance()
                 .createComponentPopupBuilder(mainPanel, searchField.getTextEditor())
-                .setTitle("Search REST Endpoints")
+                .setTitle(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_TITLE))
                 .setMovable(true)
                 .setResizable(true)
                 .setRequestFocus(true)
@@ -197,7 +188,10 @@ public final class UnifiedSearchPopup {
                 .setMinSize(JBUI.size(600, 350))
                 .createPopup();
 
-        Runnable indexListener = () -> SwingUtilities.invokeLater(runSearch);
+        Runnable indexListener = () -> SwingUtilities.invokeLater(() -> {
+            refreshModuleFilter(moduleCombo, index.getItems(), currentModule, moduleCombo.getSelectedItem());
+            runSearch.run();
+        });
         index.addListener(indexListener);
 
         popup.addListener(new JBPopupListener() {
@@ -311,7 +305,9 @@ public final class UnifiedSearchPopup {
             popup.showInFocusCenter();
         }
 
-        // Initial search
+        // Initial search. Refresh module options again to cover the race where
+        // the async endpoint index completes while the popup is still being built.
+        refreshModuleFilter(moduleCombo, index.getItems(), currentModule, moduleCombo.getSelectedItem());
         runSearch.run();
 
         IdeFocusManager.getInstance(project).requestFocus(searchField.getTextEditor(), true);
@@ -357,10 +353,9 @@ public final class UnifiedSearchPopup {
                                                           @Nullable Module currentModule,
                                                           @NotNull List<RestServiceItem> items) {
         Object selected = combo.getSelectedItem();
-        if (selected == null || "All Modules".equals(selected)) return null;
+        if (selected == null || RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_ALL).equals(selected)) return null;
         String selectedStr = selected.toString();
-        // "Current Module: xxx" → use currentModule
-        if (selectedStr.startsWith("Current Module:") && currentModule != null) {
+        if (currentModule != null && selectedStr.equals(formatCurrentModule(currentModule))) {
             return currentModule;
         }
         // Otherwise find by module name
@@ -372,9 +367,17 @@ public final class UnifiedSearchPopup {
         return null;
     }
 
-    private static void populateModuleFilter(@NotNull JComboBox<String> combo,
-                                              @NotNull List<RestServiceItem> items,
-                                              @Nullable Module currentModule) {
+    static void refreshModuleFilter(@NotNull JComboBox<String> combo,
+                                    @NotNull List<RestServiceItem> items,
+                                    @Nullable Module currentModule,
+                                    @Nullable Object preferredSelection) {
+        combo.removeAllItems();
+        String allModulesText = RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_ALL);
+        combo.addItem(allModulesText);
+        if (currentModule != null) {
+            combo.addItem(formatCurrentModule(currentModule));
+        }
+
         Set<String> modules = new LinkedHashSet<>();
         for (RestServiceItem item : items) {
             String name = item.getModuleName();
@@ -389,6 +392,17 @@ public final class UnifiedSearchPopup {
         for (String m : sorted) {
             combo.addItem(m);
         }
+
+        if (preferredSelection != null) {
+            String selectedText = preferredSelection.toString();
+            for (int i = 0; i < combo.getItemCount(); i++) {
+                if (selectedText.equals(combo.getItemAt(i))) {
+                    combo.setSelectedIndex(i);
+                    return;
+                }
+            }
+        }
+        combo.setSelectedItem(allModulesText);
     }
 
     // --- Existing helpers ---
@@ -438,11 +452,7 @@ public final class UnifiedSearchPopup {
 
         // Empty query: show recently accessed endpoints (top 20)
         if (text.isEmpty() && methodFilter == null) {
-            results = searchableItems.stream()
-                    .sorted(Comparator.comparingLong(history::getLastAccessTime).reversed())
-                    .limit(20)
-                    .map(item -> new SearchResult(item, 0, null))
-                    .collect(java.util.stream.Collectors.toList());
+            results = buildRecentResults(searchableItems, history::getLastAccessTime);
         } else {
             results = SearchEngine.search(query, searchableItems, 200, history::getUseCount);
         }
@@ -468,6 +478,24 @@ public final class UnifiedSearchPopup {
         });
     }
 
+    static @NotNull List<SearchResult> buildRecentResults(@NotNull List<RestServiceItem> items,
+                                                          @NotNull ToLongFunction<RestServiceItem> lastAccessLookup) {
+        PriorityQueue<RestServiceItem> topItems = new PriorityQueue<>(
+                Comparator.comparingLong(lastAccessLookup));
+        for (RestServiceItem item : items) {
+            topItems.add(item);
+            if (topItems.size() > 20) {
+                topItems.poll();
+            }
+        }
+
+        List<RestServiceItem> sorted = new ArrayList<>(topItems);
+        sorted.sort(Comparator.comparingLong(lastAccessLookup).reversed());
+        return sorted.stream()
+                .map(item -> new SearchResult(item, 0, null))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
     static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady) {
         return buildStatusText(text, resultCount, totalCount, indexReady, null, null);
     }
@@ -476,38 +504,40 @@ public final class UnifiedSearchPopup {
                                             @Nullable Module filterModule, @Nullable HttpMethod methodFilter) {
         if (!indexReady && resultCount == 0) {
             if (text.isEmpty()) {
-                return "Indexing REST endpoints... Results will refresh automatically.";
+                return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_INDEXING);
             }
-            return "Indexing REST endpoints for \"" + text + "\"... Results will refresh automatically.";
+            return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_INDEXING_QUERY, text);
         }
 
         if (text.isEmpty()) {
             if (totalCount == 0) {
-                return "No endpoints found. Check if project has Spring/JAX-RS controllers and IDE indexing is complete.";
+                return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_ENDPOINTS);
             }
-            return totalCount + " endpoints loaded";
+            return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_ENDPOINTS_LOADED, totalCount);
         }
 
         if (resultCount == 0) {
             StringBuilder sb = new StringBuilder();
-            sb.append("未找到匹配 \"").append(text).append("\" 的接口");
+            sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_RESULTS, text));
             if (methodFilter != null) {
-                sb.append(" [Method: ").append(methodFilter.name()).append("]");
+                sb.append(" [").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_METHOD)).append(": ")
+                        .append(methodFilter.name()).append("]");
             }
             if (filterModule != null) {
-                sb.append(" · 模块: ").append(filterModule.getName());
+                sb.append(" · ").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_MODULE)).append(": ")
+                        .append(filterModule.getName());
             }
-            sb.append("。可以尝试: 部分路径(user/login) · 方法名(tryLogin) · 中文描述(用户登录)");
+            sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_RESULTS_HINT));
             return sb.toString();
         }
 
         StringBuilder status = new StringBuilder();
-        status.append(resultCount).append(" results found");
+        status.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_RESULTS_FOUND, resultCount));
         if (methodFilter != null) {
             status.append(" [").append(methodFilter.name()).append("]");
         }
         if (filterModule != null) {
-            status.append(" in ").append(filterModule.getName());
+            status.append(" ").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_IN_MODULE, filterModule.getName()));
         }
         return status.toString();
     }
@@ -689,7 +719,7 @@ public final class UnifiedSearchPopup {
         String moduleName = item.getModuleName();
 
         StringBuilder sb = new StringBuilder();
-        sb.append("当前选中：").append(method).append(" ").append(url);
+        sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SELECTION_CURRENT)).append(method).append(" ").append(url);
         if (controllerName != null && !controllerName.isEmpty() && methodName != null && !methodName.isEmpty()) {
             sb.append(" · ").append(controllerName).append("#").append(methodName);
         }
@@ -697,5 +727,9 @@ public final class UnifiedSearchPopup {
             sb.append(" · ").append(moduleName);
         }
         selectionLabel.setText(sb.toString());
+    }
+
+    private static @NotNull String formatCurrentModule(@NotNull Module module) {
+        return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_CURRENT, module.getName());
     }
 }

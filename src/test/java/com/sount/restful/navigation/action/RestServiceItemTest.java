@@ -21,6 +21,18 @@ public class RestServiceItemTest extends BasePlatformTestCase {
         assertTrue(element.lastRequestFocus);
     }
 
+    public void testSearchSelectionKeyIsCachedAndInvalidatedWhenUrlChanges() {
+        TrackingNavigatablePsiElement element = new TrackingNavigatablePsiElement(getProject());
+        RestServiceItem item = new RestServiceItem(element, "GET", "/activity/list");
+
+        String first = item.getSearchSelectionKey();
+        String second = item.getSearchSelectionKey();
+        item.setUrl("/activity/detail");
+
+        assertSame(first, second);
+        assertEquals("GET:/activity/detail::", item.getSearchSelectionKey());
+    }
+
     private static final class TrackingNavigatablePsiElement extends FakePsiElement implements Navigatable {
         private final Project project;
         private int navigateCalls;

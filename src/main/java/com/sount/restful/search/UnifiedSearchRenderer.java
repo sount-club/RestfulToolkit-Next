@@ -1,6 +1,5 @@
 package com.sount.restful.search;
 
-import com.intellij.icons.AllIcons;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.SimpleTextAttributes;
@@ -9,6 +8,8 @@ import com.intellij.util.ui.UIUtil;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.utils.RestfulToolkitBundle;
+import com.sount.utils.RestfulToolkitBundle.Keys;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -17,8 +18,6 @@ import java.awt.*;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<SearchResult> {
 
@@ -34,21 +33,6 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
     private static final JBColor METHOD_BG_DELETE = new JBColor(new Color(0xFCE8E6), new Color(0x5C1F1B));
     private static final JBColor METHOD_BG_PATCH = new JBColor(new Color(0xF1F3F4), new Color(0x3C4043));
 
-    private static final JBColor CHIP_BACKGROUND = new JBColor(new Color(0xE8F0FE), new Color(0x1E3A5F));
-    private static final JBColor CHIP_FOREGROUND = new JBColor(new Color(0x1A73E8), new Color(0x8AB4F8));
-    private static final Border CHIP_BORDER = BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(CHIP_FOREGROUND, 1, true),
-            JBUI.Borders.empty(1, 4));
-
-    private static final Map<String, String> FIELD_CHIP_LABELS = Map.of(
-            MatchField.PATH, "命中路径",
-            MatchField.METHOD_NAME, "命中方法名",
-            MatchField.DESCRIPTION, "命中描述",
-            MatchField.HTTP_METHOD, "命中Method",
-            MatchField.MODULE_NAME, "命中模块",
-            MatchField.CONTROLLER_NAME, "命中Controller"
-    );
-
     // Pre-allocated attributes to avoid per-render allocation
     private static final SimpleTextAttributes URL_BOLD = new SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, null);
     private static final SimpleTextAttributes HIGHLIGHT_ATTRS = new SimpleTextAttributes(
@@ -60,12 +44,14 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
     private final JLabel iconLabel = new JLabel();
     private final JLabel methodLabel = new JLabel();
     private final SimpleColoredComponent urlComponent = new SimpleColoredComponent();
-    private final JLabel bestMatchBadge = new JLabel("Best match");
+    private final JLabel bestMatchBadge = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_RENDERER_BEST_MATCH));
 
     // Line 2 components (description + chips in same line)
     private final JPanel line2Panel = new JPanel(new BorderLayout());
     private final SimpleColoredComponent descLineComponent = new SimpleColoredComponent();
     private final JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
+    private final JLabel moduleChip = new JLabel();
+    private final Font moduleChipFont;
 
     private List<String> highlightTokens = Collections.emptyList();
 
@@ -102,6 +88,9 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
 
         chipsPanel.setOpaque(false);
         chipsPanel.setVisible(false);
+        moduleChipFont = moduleChip.getFont().deriveFont(Font.PLAIN, moduleChip.getFont().getSize() - 3f);
+        moduleChip.setFont(moduleChipFont);
+        chipsPanel.add(moduleChip);
 
         line2Panel.add(descLineComponent, BorderLayout.CENTER);
         line2Panel.add(chipsPanel, BorderLayout.EAST);
@@ -168,12 +157,14 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
         setToolTipText(sourceText.isEmpty() ? null : sourceText);
 
         // Line 3: module name chip
-        chipsPanel.removeAll();
         String moduleName = item.getModuleName();
         if (moduleName != null && !moduleName.isEmpty()) {
-            chipsPanel.add(createModuleChip(moduleName, isSelected));
+            configureModuleChip(moduleName, isSelected);
+            moduleChip.setVisible(true);
+        } else {
+            moduleChip.setVisible(false);
         }
-        chipsPanel.setVisible(chipsPanel.getComponentCount() > 0);
+        chipsPanel.setVisible(moduleChip.isVisible());
 
         // Selection colors
         if (isSelected) {
@@ -193,36 +184,19 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
             BorderFactory.createLineBorder(MODULE_CHIP_FG, 1, true),
             JBUI.Borders.empty(1, 4));
 
-    private JLabel createModuleChip(String moduleName, boolean isSelected) {
-        JLabel chip = new JLabel(moduleName);
-        chip.setFont(chip.getFont().deriveFont(Font.PLAIN, chip.getFont().getSize() - 3f));
+    private void configureModuleChip(String moduleName, boolean isSelected) {
+        moduleChip.setText(moduleName);
+        moduleChip.setFont(moduleChipFont);
         if (isSelected) {
-            chip.setForeground(UIUtil.getListSelectionForeground(true));
-            chip.setBorder(BorderFactory.createCompoundBorder(
+            moduleChip.setForeground(UIUtil.getListSelectionForeground(true));
+            moduleChip.setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createLineBorder(UIUtil.getListSelectionForeground(true), 1, true),
                     JBUI.Borders.empty(1, 4)));
         } else {
-            chip.setForeground(MODULE_CHIP_FG);
-            chip.setBorder(MODULE_CHIP_BORDER);
+            moduleChip.setForeground(MODULE_CHIP_FG);
+            moduleChip.setBorder(MODULE_CHIP_BORDER);
         }
-        chip.setOpaque(false);
-        return chip;
-    }
-
-    private JLabel createChip(String text, boolean isSelected) {
-        JLabel chip = new JLabel(text);
-        chip.setFont(chip.getFont().deriveFont(Font.PLAIN, chip.getFont().getSize() - 3f));
-        if (isSelected) {
-            chip.setForeground(UIUtil.getListSelectionForeground(true));
-            chip.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(UIUtil.getListSelectionForeground(true), 1, true),
-                    JBUI.Borders.empty(1, 4)));
-        } else {
-            chip.setForeground(CHIP_FOREGROUND);
-            chip.setBorder(CHIP_BORDER);
-        }
-        chip.setOpaque(false);
-        return chip;
+        moduleChip.setOpaque(false);
     }
 
     private void appendHighlightedMultiToken(SimpleColoredComponent component, String text,

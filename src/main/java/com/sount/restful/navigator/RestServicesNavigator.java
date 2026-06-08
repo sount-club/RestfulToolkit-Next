@@ -14,6 +14,7 @@ import com.intellij.ui.content.ContentManager;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.search.EndpointIndex;
 import com.sount.utils.RestfulToolkitBundle;
+import com.sount.utils.RestfulToolkitBundle.Keys;
 import com.sount.utils.ToolkitUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
@@ -59,7 +60,7 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
-                final JLabel myLabel = new JLabel(RestfulToolkitBundle.message("toolkit.navigator.nothing.to.display",
+                final JLabel myLabel = new JLabel(RestfulToolkitBundle.message(Keys.TOOLKIT_NAVIGATOR_NOTHING_TO_DISPLAY,
                         ToolkitUtil.formatHtmlImage(null)));
 
                 if (!myProject.isInitialized()) {

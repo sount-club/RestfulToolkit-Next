@@ -76,6 +76,47 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
         assertEquals(0, UnifiedSearchPopup.findSelectionIndex(results, "POST:/missing"));
     }
 
+    public void testBuildRecentResultsKeepsOnlyTopTwentyByLastAccessTime() {
+        List<RestServiceItem> items = java.util.stream.IntStream.range(0, 25)
+                .mapToObj(i -> createItem("GET", "/activity/" + i))
+                .toList();
+
+        List<SearchResult> results = UnifiedSearchPopup.buildRecentResults(items, item -> {
+            String url = item.getUrl();
+            return Long.parseLong(url.substring(url.lastIndexOf('/') + 1));
+        });
+
+        assertEquals(20, results.size());
+        assertEquals("/activity/24", results.get(0).item().getUrl());
+        assertEquals("/activity/5", results.get(19).item().getUrl());
+    }
+
+    public void testRefreshModuleFilterAddsModulesAfterIndexBecomesAvailable() {
+        JComboBox<String> combo = new JComboBox<>();
+        RestServiceItem item = createItem("GET", "/activity/list");
+        item.setModule(getModule());
+
+        UnifiedSearchPopup.refreshModuleFilter(combo, List.of(), null, null);
+        assertEquals(1, combo.getItemCount());
+
+        UnifiedSearchPopup.refreshModuleFilter(combo, List.of(item), null, null);
+
+        assertEquals(2, combo.getItemCount());
+        assertEquals(getModule().getName(), combo.getItemAt(1));
+    }
+
+    public void testRefreshModuleFilterPreservesExistingSelection() {
+        JComboBox<String> combo = new JComboBox<>();
+        RestServiceItem item = createItem("GET", "/activity/list");
+        item.setModule(getModule());
+
+        UnifiedSearchPopup.refreshModuleFilter(combo, List.of(item), null, null);
+        combo.setSelectedItem(getModule().getName());
+        UnifiedSearchPopup.refreshModuleFilter(combo, List.of(item), null, combo.getSelectedItem());
+
+        assertEquals(getModule().getName(), combo.getSelectedItem());
+    }
+
     public void testMoveFocusToResultsKeepsExistingSelection() {
         JBList<SearchResult> list = new JBList<>(new DefaultListModel<>());
         RestServiceItem first = createItem("GET", "/activity/list");

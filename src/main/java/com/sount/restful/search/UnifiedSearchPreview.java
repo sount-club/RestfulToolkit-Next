@@ -17,6 +17,8 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.utils.RestfulToolkitBundle;
+import com.sount.utils.RestfulToolkitBundle.Keys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -28,10 +30,6 @@ import java.util.Objects;
 import java.util.concurrent.Callable;
 
 public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
-
-    private static final String NO_DESCRIPTION = "No description";
-    private static final String NO_METHOD_CODE = "No method source available";
-    private static final String LOADING_METHOD_CODE = "Loading method code...";
 
     private final JBLabel methodLabel = new JBLabel();
     private final JTextArea endpointArea = new JTextArea();
@@ -63,7 +61,7 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
 
         addPreviewRow(centerPanel, createHeaderPanel(), 0, 0, 0);
         addPreviewRow(centerPanel, createDescriptionPanel(), 1, 0, JBUI.scale(8));
-        JPanel methodCodeSection = createSectionPanel("Method Code", methodCodeEditor);
+        JPanel methodCodeSection = createSectionPanel(RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_METHOD_CODE), methodCodeEditor);
         methodCodeSection.setName("methodCodeSection");
         addPreviewRow(centerPanel, methodCodeSection, 2, 1, JBUI.scale(8));
 
@@ -139,7 +137,7 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         configureReadOnlyTextArea(descriptionArea, UIUtil.getLabelFont(), false);
         descriptionArea.setRows(3);
         descriptionArea.setForeground(JBColor.GRAY);
-        return createSectionPanel("Description", descriptionArea);
+        return createSectionPanel(RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_DESCRIPTION), descriptionArea);
     }
 
     private @NotNull JPanel createSectionPanel(@NotNull String title, @NotNull JComponent content) {
@@ -217,8 +215,8 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         endpointArea.setText((isFav ? "\u2605 " : "") + url);
         endpointArea.setToolTipText(url);
         sourceArea.setText(buildSourceText(location, moduleName, ""));
-        descriptionArea.setText(displayOrEmpty(description, NO_DESCRIPTION));
-        setMethodCode(PlainTextFileType.INSTANCE, LOADING_METHOD_CODE);
+        descriptionArea.setText(displayOrEmpty(description, RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_NO_DESCRIPTION)));
+        setMethodCode(PlainTextFileType.INSTANCE, RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_LOADING_METHOD_CODE));
 
         Callable<Object[]> computeTask = () -> {
             if (currentItem != item) return new Object[]{PlainTextFileType.INSTANCE, ""};
@@ -231,14 +229,14 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
             }
             FileType fileType = (FileType) result[0];
             String code = (String) result[1];
-            setMethodCode(fileType, displayOrEmpty(code, NO_METHOD_CODE));
+            setMethodCode(fileType, displayOrEmpty(code, RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_NO_METHOD_CODE)));
         }).submit(AppExecutorUtil.getAppExecutorService());
     }
 
     public void clearPreview() {
         methodLabel.setText("");
         methodLabel.setBackground(UIUtil.getPanelBackground());
-        endpointArea.setText("Select an endpoint");
+        endpointArea.setText(RestfulToolkitBundle.message(Keys.SEARCH_PREVIEW_SELECT_ENDPOINT));
         endpointArea.setToolTipText(null);
         sourceArea.setText("");
         descriptionArea.setText("");

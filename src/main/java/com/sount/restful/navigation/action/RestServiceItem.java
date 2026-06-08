@@ -51,6 +51,7 @@ public class RestServiceItem implements NavigationItem {
     private String cachedControllerName; // pre-computed at construction time
     private String cachedMethodName;     // pre-computed at construction time
     private String cachedSearchableText; // pre-computed at construction time
+    private String cachedSearchSelectionKey;
 
     // Lowercase caches for search scoring (avoid repeated lower() calls)
     private String cachedLowerUrl;
@@ -198,6 +199,9 @@ public class RestServiceItem implements NavigationItem {
 
     public void setMethod(HttpMethod method) {
         this.method = method;
+        this.cachedLowerHttpMethod = toLower(getMethodText());
+        this.cachedSearchableText = buildSearchableText();
+        this.cachedSearchSelectionKey = null;
     }
 
     public String getUrl() {
@@ -206,6 +210,9 @@ public class RestServiceItem implements NavigationItem {
 
     public void setUrl(String url) {
         this.url = url;
+        this.cachedLowerUrl = toLower(url);
+        this.cachedSearchableText = buildSearchableText();
+        this.cachedSearchSelectionKey = null;
     }
 
     public String getFullUrl() {
@@ -231,6 +238,7 @@ public class RestServiceItem implements NavigationItem {
         this.cachedModuleName = module != null ? module.getName() : "";
         this.cachedLowerModuleName = toLower(cachedModuleName);
         this.cachedSearchableText = buildSearchableText();
+        this.cachedSearchSelectionKey = null;
     }
 
 /*    public String getHostContextPath() {
@@ -288,7 +296,10 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getSearchSelectionKey() {
-        return getEndpointKey() + ":" + getLocationText() + ":" + getModuleName();
+        if (cachedSearchSelectionKey == null) {
+            cachedSearchSelectionKey = getEndpointKey() + ":" + getLocationText() + ":" + getModuleName();
+        }
+        return cachedSearchSelectionKey;
     }
 
     public String getPackageName() {
