@@ -12,7 +12,9 @@ import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public abstract class BaseServiceResolver implements ServiceResolver{
     private static final com.intellij.openapi.diagnostic.Logger LOG = com.intellij.openapi.diagnostic.Logger.getInstance(BaseServiceResolver.class);
@@ -22,20 +24,24 @@ public abstract class BaseServiceResolver implements ServiceResolver{
 
     @NotNull
     public static List<RestServiceItem> findAllEndpoints(@NotNull Module module) {
-        List<RestServiceItem> items = new ArrayList<>();
+        Map<String, RestServiceItem> deduped = new LinkedHashMap<>();
         for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(module), new JaxrsResolver(module)}) {
-            items.addAll(resolver.findAllSupportedServiceItemsInModule());
+            for (RestServiceItem item : resolver.findAllSupportedServiceItemsInModule()) {
+                deduped.putIfAbsent(item.getSearchSelectionKey(), item);
+            }
         }
-        return items;
+        return new ArrayList<>(deduped.values());
     }
 
     @NotNull
     public static List<RestServiceItem> findAllEndpoints(@NotNull Project project) {
-        List<RestServiceItem> items = new ArrayList<>();
+        Map<String, RestServiceItem> deduped = new LinkedHashMap<>();
         for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(project), new JaxrsResolver(project)}) {
-            items.addAll(resolver.findAllSupportedServiceItemsInProject());
+            for (RestServiceItem item : resolver.findAllSupportedServiceItemsInProject()) {
+                deduped.putIfAbsent(item.getSearchSelectionKey(), item);
+            }
         }
-        return items;
+        return new ArrayList<>(deduped.values());
     }
 
     @Override
@@ -94,9 +100,10 @@ public abstract class BaseServiceResolver implements ServiceResolver{
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (Throwable e) {
-            // Handle any index inconsistency errors gracefully
-            // Return empty list instead of crashing
-            LOG.warn("Failed to resolve REST endpoints (index may be inconsistent)", e);
+            // Handle any index inconsistency errors gracefully — return empty list.
+            // Log at debug level since this is a transient condition during indexing,
+            // and the platform may have already logged the error internally.
+            LOG.debug("Failed to resolve REST endpoints (index may be inconsistent)", e);
             itemList = new ArrayList<>();
         }
 

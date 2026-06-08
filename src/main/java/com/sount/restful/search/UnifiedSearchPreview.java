@@ -7,6 +7,7 @@ import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
+import com.intellij.psi.PsiElement;
 import com.intellij.openapi.project.Project;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.EditorTextField;
@@ -219,15 +220,18 @@ public class UnifiedSearchPreview extends JBPanel<UnifiedSearchPreview> {
         descriptionArea.setText(displayOrEmpty(description, NO_DESCRIPTION));
         setMethodCode(PlainTextFileType.INSTANCE, LOADING_METHOD_CODE);
 
-        Callable<String> computeTask = () -> {
-            if (currentItem != item) return "";
-            return buildMethodCode(item.getPsiElement());
+        Callable<Object[]> computeTask = () -> {
+            if (currentItem != item) return new Object[]{PlainTextFileType.INSTANCE, ""};
+            PsiElement el = item.getPsiElement();
+            return new Object[]{resolveMethodCodeFileType(el), buildMethodCode(el)};
         };
         ReadAction.nonBlocking(computeTask).finishOnUiThread(ModalityState.defaultModalityState(), result -> {
-            if (!Objects.equals(currentItem, item)) {
+            if (!Objects.equals(currentItem, item) || result == null) {
                 return; // stale
             }
-            setMethodCode(resolveMethodCodeFileType(item.getPsiElement()), displayOrEmpty(result, NO_METHOD_CODE));
+            FileType fileType = (FileType) result[0];
+            String code = (String) result[1];
+            setMethodCode(fileType, displayOrEmpty(code, NO_METHOD_CODE));
         }).submit(AppExecutorUtil.getAppExecutorService());
     }
 

@@ -205,7 +205,33 @@ public class PsiMethodHelper {
         }
 
         String shortTypeName = psiParameter.getType().getPresentableText();
-        return PsiClassHelper.getJavaBaseTypeDefaultValue(shortTypeName) == null;
+        // Primitive and common wrapper types are not request body
+        if (PsiClassHelper.getJavaBaseTypeDefaultValue(shortTypeName) != null) {
+            return false;
+        }
+        // Spring framework injected types are not request body
+        String canonical = psiParameter.getType().getCanonicalText();
+        return !isSpringInjectedType(canonical);
+    }
+
+    private static boolean isSpringInjectedType(@NotNull String fqn) {
+        // Strip generic parameters: "java.util.Map<java.lang.String,java.lang.Object>" → "java.util.Map"
+        String rawType = fqn.contains("<") ? fqn.substring(0, fqn.indexOf('<')) : fqn;
+        return rawType.startsWith("javax.servlet.")
+                || rawType.startsWith("jakarta.servlet.")
+                || rawType.startsWith("org.springframework.web.multipart.")
+                || "java.io.InputStream".equals(rawType)
+                || "java.io.Reader".equals(rawType)
+                || "java.security.Principal".equals(rawType)
+                || "java.util.Locale".equals(rawType)
+                || "java.util.Map".equals(rawType)
+                || "java.util.List".equals(rawType)
+                || "java.util.Set".equals(rawType)
+                || "java.util.Collection".equals(rawType)
+                || "org.springframework.ui.Model".equals(rawType)
+                || "org.springframework.ui.ModelMap".equals(rawType)
+                || "org.springframework.validation.BindingResult".equals(rawType)
+                || "org.springframework.http.HttpEntity".equals(rawType);
     }
 
     public String getAnnotationValue(PsiAnnotation annotation) {

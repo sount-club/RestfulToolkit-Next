@@ -12,6 +12,7 @@ import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import com.intellij.ui.content.ContentManager;
 import com.sount.restful.common.ToolkitIcons;
+import com.sount.restful.search.EndpointIndex;
 import com.sount.utils.RestfulToolkitBundle;
 import com.sount.utils.ToolkitUtil;
 import org.jdom.Element;
@@ -42,6 +43,7 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
 
     private final RestServiceProjectsManager myProjectsManager;
     private String pendingFilterText = "";
+    private boolean indexListenerRegistered = false;
 
     public RestServicesNavigator(Project project) {
         myProject = project;
@@ -120,6 +122,7 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
         bindToolWindow(toolWindow);
         myToolWindow.setAvailable(true);
         myToolWindow.show(this::scheduleStructureUpdate);
+        listenForProjectsChanges();
     }
 
     public void bindToolWindow(@NotNull ToolWindow toolWindow) {
@@ -194,6 +197,10 @@ public class RestServicesNavigator implements PersistentStateComponent<RestServi
     }
 
     private void listenForProjectsChanges() {
+        if (indexListenerRegistered) return;
+        indexListenerRegistered = true;
+        EndpointIndex.getInstance(myProject).addListener(() ->
+                SwingUtilities.invokeLater(this::scheduleStructureUpdate));
     }
 
     @Nullable

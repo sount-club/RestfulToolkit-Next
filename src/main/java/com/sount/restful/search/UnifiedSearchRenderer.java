@@ -62,10 +62,9 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
     private final SimpleColoredComponent urlComponent = new SimpleColoredComponent();
     private final JLabel bestMatchBadge = new JLabel("Best match");
 
-    // Line 2 components
+    // Line 2 components (description + chips in same line)
+    private final JPanel line2Panel = new JPanel(new BorderLayout());
     private final SimpleColoredComponent descLineComponent = new SimpleColoredComponent();
-
-    // Line 3 components
     private final JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
 
     private List<String> highlightTokens = Collections.emptyList();
@@ -94,23 +93,25 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
         bestMatchBadge.setVisible(false);
         line1.add(bestMatchBadge, BorderLayout.EAST);
 
-        // Line 2: description · Controller#methodName · moduleName
+        // Line 2: description · Controller#methodName · moduleName + chips
+        line2Panel.setOpaque(false);
         descLineComponent.setOpaque(false);
         Font descFont = UIUtil.getLabelFont();
         descLineComponent.setFont(descFont.deriveFont(Font.PLAIN, descFont.getSize() - 2f));
         descLineComponent.setIpad(JBUI.emptyInsets());
 
-        // Line 3: match field chips
         chipsPanel.setOpaque(false);
         chipsPanel.setVisible(false);
+
+        line2Panel.add(descLineComponent, BorderLayout.CENTER);
+        line2Panel.add(chipsPanel, BorderLayout.EAST);
 
         // Layout: vertical box
         JPanel contentPanel = new JPanel();
         contentPanel.setOpaque(false);
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.add(line1);
-        contentPanel.add(descLineComponent);
-        contentPanel.add(chipsPanel);
+        contentPanel.add(line2Panel);
 
         add(contentPanel, BorderLayout.CENTER);
     }
@@ -150,44 +151,29 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
         // Best match badge (only for first result)
         bestMatchBadge.setVisible(index == 0 && !highlightTokens.isEmpty());
 
-        // Line 2: Controller#method · module
+        // Line 2: Controller#method
         descLineComponent.clear();
         String controllerName = item.getControllerName();
         String methodName = item.getMethodName();
-        String moduleName = item.getModuleName();
 
         SimpleTextAttributes dimAttrs = isSelected ? DIM_SELECTED : DIM_NORMAL;
 
-        boolean hasPrev = false;
         if (controllerName != null && !controllerName.isEmpty() && methodName != null && !methodName.isEmpty()) {
             String controllerMethod = controllerName + "#" + methodName;
             appendHighlightedMultiToken(descLineComponent, controllerMethod, highlightTokens, dimAttrs);
-            hasPrev = true;
-        }
-        if (moduleName != null && !moduleName.isEmpty()) {
-            if (hasPrev) descLineComponent.append(" · ", dimAttrs);
-            appendHighlightedMultiToken(descLineComponent, moduleName, highlightTokens, dimAttrs);
         }
 
         // Tooltip with full endpoint info
         String sourceText = buildSourceText(item);
         setToolTipText(sourceText.isEmpty() ? null : sourceText);
 
-        // Line 3: match field chips
-        Set<String> matchedFields = value.matchedFields();
+        // Line 3: module name chip
         chipsPanel.removeAll();
-        if (matchedFields != null && !matchedFields.isEmpty()) {
-            for (String field : matchedFields) {
-                String label = FIELD_CHIP_LABELS.get(field);
-                if (label != null) {
-                    JLabel chip = createChip(label, isSelected);
-                    chipsPanel.add(chip);
-                }
-            }
-            chipsPanel.setVisible(true);
-        } else {
-            chipsPanel.setVisible(false);
+        String moduleName = item.getModuleName();
+        if (moduleName != null && !moduleName.isEmpty()) {
+            chipsPanel.add(createModuleChip(moduleName, isSelected));
         }
+        chipsPanel.setVisible(chipsPanel.getComponentCount() > 0);
 
         // Selection colors
         if (isSelected) {
@@ -199,6 +185,28 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
         }
 
         return this;
+    }
+
+    private static final JBColor MODULE_CHIP_BG = new JBColor(new Color(0xF3E8FD), new Color(0x3B2D5A));
+    private static final JBColor MODULE_CHIP_FG = new JBColor(new Color(0x7C3AED), new Color(0xC4A8FF));
+    private static final Border MODULE_CHIP_BORDER = BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(MODULE_CHIP_FG, 1, true),
+            JBUI.Borders.empty(1, 4));
+
+    private JLabel createModuleChip(String moduleName, boolean isSelected) {
+        JLabel chip = new JLabel(moduleName);
+        chip.setFont(chip.getFont().deriveFont(Font.PLAIN, chip.getFont().getSize() - 3f));
+        if (isSelected) {
+            chip.setForeground(UIUtil.getListSelectionForeground(true));
+            chip.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(UIUtil.getListSelectionForeground(true), 1, true),
+                    JBUI.Borders.empty(1, 4)));
+        } else {
+            chip.setForeground(MODULE_CHIP_FG);
+            chip.setBorder(MODULE_CHIP_BORDER);
+        }
+        chip.setOpaque(false);
+        return chip;
     }
 
     private JLabel createChip(String text, boolean isSelected) {

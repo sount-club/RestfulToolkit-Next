@@ -24,10 +24,8 @@ public class EditSourceAction extends AnAction implements DumbAware {
     if (serviceItems == null) return;
 
     for (RestServiceItem serviceItem : serviceItems) {
-      PsiElement psiElement = serviceItem.getPsiElement();
-      if (psiElement != null && psiElement.isValid()) {
-        serviceItem.navigate(true);
-      }
+      // navigate() internally checks isValid() inside ReadAction — no need to check here.
+      serviceItem.navigate(true);
     }
   }
 

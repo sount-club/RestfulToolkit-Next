@@ -47,10 +47,18 @@ public class RestServiceItem implements NavigationItem {
     private String cachedJavadoc;      // pre-computed at construction time
     private String cachedModuleName;   // pre-computed at construction time
     private String cachedPackageName;  // pre-computed at construction time
-    private String cachedDescription;    // lazy: annotation or javadoc description
-    private String cachedControllerName; // lazy: class name only
-    private String cachedMethodName;     // lazy: method name only
-    private String cachedSearchableText; // lazy: pre-lowered concatenation for fast search
+    private String cachedDescription;    // pre-computed at construction time
+    private String cachedControllerName; // pre-computed at construction time
+    private String cachedMethodName;     // pre-computed at construction time
+    private String cachedSearchableText; // pre-computed at construction time
+
+    // Lowercase caches for search scoring (avoid repeated lower() calls)
+    private String cachedLowerUrl;
+    private String cachedLowerMethodName;
+    private String cachedLowerModuleName;
+    private String cachedLowerControllerName;
+    private String cachedLowerDescription;
+    private String cachedLowerHttpMethod;
 
     //        ((KtClass) ((KtClassBody) psiElement.getParent()).getParent()).getModifierList().getAnnotationEntries().get(0).getText()
     public RestServiceItem(PsiElement psiElement, String requestMethod, String urlPath) {
@@ -67,11 +75,15 @@ public class RestServiceItem implements NavigationItem {
         if (psiElement instanceof Navigatable) {
             navigationElement = (Navigatable) psiElement;
         }
-        // Pre-compute PSI-dependent fields at construction time (inside read action)
-        // Note: description is lazy (expensive annotation lookup), not eager
+        // Pre-compute all PSI-dependent fields at construction time (inside read action)
         this.cachedLocationText = computeLocationText();
         this.cachedJavadoc = computeJavadoc();
         this.cachedPackageName = computePackageName();
+        this.cachedControllerName = computeControllerName();
+        this.cachedMethodName = computeMethodName();
+        this.cachedDescription = computeDescription();
+        preComputeLowerCaches();
+        this.cachedSearchableText = buildSearchableText();
     }
 
     @Nullable
@@ -88,24 +100,15 @@ public class RestServiceItem implements NavigationItem {
 
     @Override
     public void navigate(boolean requestFocus) {
-        if (navigationElement != null) {
-            // PSI access (isValid, canNavigate) requires read lock
-            Navigatable nav = ReadAction.compute(() -> {
-                if (psiElement == null || !psiElement.isValid()) return null;
-                return navigationElement.canNavigate() ? navigationElement : null;
-            });
-            if (nav != null) {
-                nav.navigate(requestFocus);
-            }
-            return;
-        }
-
-        // Compute the descriptor inside ReadAction (PSI access requires read lock),
-        // then navigate outside ReadAction so the platform can acquire WriteIntentReadAction
-        // for opening the editor without causing a nested-lock conflict.
+        // PSI access (isValid, canNavigate, getTextOffset) requires read lock.
+        // Compute descriptor inside ReadAction, navigate outside.
+        // EditSourceUtil.getDescriptor() → getTextOffset() needs read lock.
+        // OpenFileDescriptor.navigate() uses WriteIntentReadAction internally.
         Navigatable navDescriptor = ReadAction.compute(() -> {
             if (psiElement == null || !psiElement.isValid()) return null;
-            return EditSourceUtil.getDescriptor(psiElement);
+            Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
+            if (descriptor != null) return descriptor;
+            return navigationElement != null && navigationElement.canNavigate() ? navigationElement : null;
         });
         if (navDescriptor != null) {
             navDescriptor.navigate(requestFocus);
@@ -160,22 +163,12 @@ public class RestServiceItem implements NavigationItem {
             return url;
         }
 
-        //        对应的文件位置显示
         @Nullable
         @Override
         public String getLocationString() {
-            String fileName = psiElement.getContainingFile().getName();
-
-            String location = null;
-
-            if (psiElement instanceof PsiMethod psiMethod) {
-                location = psiMethod.getContainingClass().getName().concat("#").concat(psiMethod.getName());
-            } else if (psiElement instanceof KtNamedFunction) {
-                KtNamedFunction ktNamedFunction = (KtNamedFunction) RestServiceItem.this.psiElement;
-                String className = ((KtClass) psiElement.getParent().getParent()).getName();
-                location = className.concat("#").concat(ktNamedFunction.getName());
-            }
-
+            // Use pre-computed cached value to avoid PSI access on EDT without ReadAction.
+            // IntelliJ's tree renderer may call this during paint/layout on EDT.
+            String location = cachedLocationText != null ? cachedLocationText : "";
             return "(" + location + ")";
         }
 
@@ -235,7 +228,9 @@ public class RestServiceItem implements NavigationItem {
 
     public void setModule(Module module) {
         this.module = module;
-        this.cachedModuleName = null; // invalidate cache
+        this.cachedModuleName = module != null ? module.getName() : "";
+        this.cachedLowerModuleName = toLower(cachedModuleName);
+        this.cachedSearchableText = buildSearchableText();
     }
 
 /*    public String getHostContextPath() {
@@ -261,6 +256,7 @@ public class RestServiceItem implements NavigationItem {
     public String getModuleName() {
         if (cachedModuleName != null) return cachedModuleName;
         cachedModuleName = module != null ? module.getName() : "";
+        cachedLowerModuleName = toLower(cachedModuleName);
         return cachedModuleName;
     }
 
@@ -337,10 +333,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getDescription() {
-        if (cachedDescription != null) return cachedDescription;
-        // PSI annotation access requires read action; may be called from EDT during search
-        cachedDescription = ReadAction.compute(this::computeDescription);
-        return cachedDescription;
+        return cachedDescription != null ? cachedDescription : "";
     }
 
     private String computeDescription() {
@@ -374,9 +367,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getControllerName() {
-        if (cachedControllerName != null) return cachedControllerName;
-        cachedControllerName = ReadAction.compute(this::computeControllerName);
-        return cachedControllerName;
+        return cachedControllerName != null ? cachedControllerName : "";
     }
 
     private String computeControllerName() {
@@ -393,9 +384,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getMethodName() {
-        if (cachedMethodName != null) return cachedMethodName;
-        cachedMethodName = ReadAction.compute(this::computeMethodName);
-        return cachedMethodName;
+        return cachedMethodName != null ? cachedMethodName : "";
     }
 
     private String computeMethodName() {
@@ -410,25 +399,50 @@ public class RestServiceItem implements NavigationItem {
 
     /**
      * Returns a pre-lowered concatenation of all searchable fields.
-     * Cached after first call for fast repeated search scoring.
+     * Pre-computed at construction time for fast repeated search scoring.
      */
     public String getSearchableText() {
-        if (cachedSearchableText != null) return cachedSearchableText;
-        StringBuilder sb = new StringBuilder();
-        appendLower(sb, getMethodText());
-        appendLower(sb, getUrl());
-        appendLower(sb, getDescription());
-        appendLower(sb, getControllerName());
-        appendLower(sb, getMethodName());
-        appendLower(sb, getModuleName());
-        cachedSearchableText = sb.toString();
-        return cachedSearchableText;
+        return cachedSearchableText != null ? cachedSearchableText : "";
     }
 
-    private static void appendLower(StringBuilder sb, String value) {
+    // --- Lowercase cache accessors for SearchEngine ---
+
+    public String getLowerUrl() { return cachedLowerUrl != null ? cachedLowerUrl : ""; }
+    public String getLowerMethodName() { return cachedLowerMethodName != null ? cachedLowerMethodName : ""; }
+    public String getLowerModuleName() { return cachedLowerModuleName != null ? cachedLowerModuleName : ""; }
+    public String getLowerControllerName() { return cachedLowerControllerName != null ? cachedLowerControllerName : ""; }
+    public String getLowerDescription() { return cachedLowerDescription != null ? cachedLowerDescription : ""; }
+    public String getLowerHttpMethod() { return cachedLowerHttpMethod != null ? cachedLowerHttpMethod : ""; }
+
+    private void preComputeLowerCaches() {
+        cachedLowerUrl = toLower(url);
+        cachedLowerMethodName = toLower(cachedMethodName);
+        cachedLowerModuleName = toLower(getModuleName());
+        cachedLowerControllerName = toLower(cachedControllerName);
+        cachedLowerDescription = toLower(cachedDescription);
+        cachedLowerHttpMethod = toLower(getMethodText());
+    }
+
+    private static String toLower(@Nullable String s) {
+        return s != null ? s.toLowerCase(Locale.ROOT) : "";
+    }
+
+    private String buildSearchableText() {
+        // Reuse pre-computed lowercase caches to avoid redundant toLowerCase() calls
+        StringBuilder sb = new StringBuilder(128);
+        appendNonEmpty(sb, cachedLowerHttpMethod);
+        appendNonEmpty(sb, cachedLowerUrl);
+        appendNonEmpty(sb, cachedLowerDescription);
+        appendNonEmpty(sb, cachedLowerControllerName);
+        appendNonEmpty(sb, cachedLowerMethodName);
+        appendNonEmpty(sb, cachedLowerModuleName);
+        return sb.toString();
+    }
+
+    private static void appendNonEmpty(StringBuilder sb, String value) {
         if (value != null && !value.isEmpty()) {
             if (sb.length() > 0) sb.append(' ');
-            sb.append(value.toLowerCase(Locale.ROOT));
+            sb.append(value);
         }
     }
 
@@ -436,12 +450,12 @@ public class RestServiceItem implements NavigationItem {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof RestServiceItem other)) return false;
-        return Objects.equals(url, other.url) && Objects.equals(requestMethod, other.requestMethod);
+        return Objects.equals(url, other.url) && Objects.equals(getMethodText(), other.getMethodText());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(url, requestMethod);
+        return Objects.hash(url, getMethodText());
     }
 
     private boolean containsIgnoreCase(String text, String expectedLowerCase) {

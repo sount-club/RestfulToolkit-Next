@@ -1,5 +1,6 @@
 package com.sount.restful.search;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
@@ -10,6 +11,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public final class SearchEngine {
+
+    private static final Logger LOG = Logger.getInstance(SearchEngine.class);
 
     private static final int SCORE_PATH_EXACT = 200;
     private static final int SCORE_PATH_STARTS_WITH = 130;
@@ -36,7 +39,6 @@ public final class SearchEngine {
                                                       int maxResults,
                                                       @Nullable Function<RestServiceItem, Integer> useCountLookup) {
         if (query == null || query.isEmpty()) {
-            // Return all items sorted by URL
             return items.stream()
                     .map(item -> new SearchResult(item, 0, null))
                     .sorted()
@@ -44,23 +46,34 @@ public final class SearchEngine {
                     .collect(Collectors.toList());
         }
 
+        long startTime = System.nanoTime();
+
         // Pre-lower tokens once
         List<String> lowerTokens = query.tokens().stream()
                 .map(t -> t.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toList());
 
-        List<SearchResult> results = new ArrayList<>();
+        // Top-N with min-heap: avoid sorting the full result list
+        PriorityQueue<SearchResult> topN = new PriorityQueue<>(maxResults + 1);
         for (RestServiceItem item : items) {
             ScoreResult sr = scoreItem(query, item, lowerTokens, useCountLookup);
             if (sr.score > 0) {
-                results.add(new SearchResult(item, sr.score, null, sr.matchedFields));
+                topN.add(new SearchResult(item, sr.score, null, sr.matchedFields));
+                if (topN.size() > maxResults) {
+                    topN.poll(); // remove lowest score
+                }
             }
         }
 
+        List<SearchResult> results = new ArrayList<>(topN);
         Collections.sort(results);
-        if (results.size() > maxResults) {
-            return results.subList(0, maxResults);
+
+        long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+        if (elapsedMs > 10 || LOG.isDebugEnabled()) {
+            LOG.debug("Search '" + query.rawInput() + "': " + results.size() + "/" + items.size()
+                    + " items in " + elapsedMs + "ms");
         }
+
         return results;
     }
 
@@ -94,14 +107,13 @@ public final class SearchEngine {
             }
         }
 
-        // All tokens present — now compute per-token best score using individual fields
-        // These getters are cached after first call (lazy)
-        String path = lower(item.getUrl());
-        String methodName = lower(item.getMethodName());
-        String description = lower(item.getDescription());
-        String httpMethod = lower(item.getMethodText());
-        String moduleName = lower(item.getModuleName());
-        String controllerName = lower(item.getControllerName());
+        // All tokens present — now compute per-token best score using pre-computed lowercase fields
+        String path = item.getLowerUrl();
+        String methodName = item.getLowerMethodName();
+        String description = item.getLowerDescription();
+        String httpMethod = item.getLowerHttpMethod();
+        String moduleName = item.getLowerModuleName();
+        String controllerName = item.getLowerControllerName();
 
         for (String t : lowerTokens) {
             int bestTokenScore = 0;

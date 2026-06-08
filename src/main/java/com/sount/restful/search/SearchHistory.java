@@ -38,6 +38,8 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
 
     @Override
     public void loadState(@NotNull SearchHistory.State state) {
+        // PersistentStateComponent.loadState() is called on the EDT during project loading,
+        // consistent with all other access to myState from UI event handlers.
         myState = state;
     }
 

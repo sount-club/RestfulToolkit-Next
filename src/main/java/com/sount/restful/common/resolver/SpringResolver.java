@@ -4,6 +4,7 @@ package com.sount.restful.common.resolver;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
@@ -35,7 +36,9 @@ import org.jetbrains.kotlin.psi.KtValueArgumentName;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class SpringResolver extends BaseServiceResolver {
     private static final Logger LOG = Logger.getInstance(SpringResolver.class);
@@ -54,6 +57,8 @@ public class SpringResolver extends BaseServiceResolver {
     @Override
     public List<RestServiceItem> getRestServiceItemList(Project project, GlobalSearchScope globalSearchScope) {
         List<RestServiceItem> itemList = new ArrayList<>();
+        Set<PsiClass> processedJavaClasses = new HashSet<>();
+        Set<KtClass> processedKtClasses = new HashSet<>();
 
         // TODO: 这种实现的局限了其他方式实现的url映射（xml（类似struts），webflux routers）
         SpringControllerAnnotation[] supportedAnnotations = SpringControllerAnnotation.values();
@@ -72,6 +77,9 @@ public class SpringResolver extends BaseServiceResolver {
                 if (!(psiElement instanceof PsiClass psiClass)) {
                     continue;
                 }
+                // Deduplicate: same class may have multiple controller annotations
+                if (!processedJavaClasses.add(psiClass)) continue;
+
                 List<RestServiceItem> serviceItemList = getServiceItemList(psiClass);
                 itemList.addAll(serviceItemList);
             }
@@ -87,6 +95,9 @@ public class SpringResolver extends BaseServiceResolver {
                     if (modifierList == null || !(modifierList.getParent() instanceof KtClass ktClass)) {
                         continue;
                     }
+
+                    // Deduplicate: same class may have multiple controller annotations
+                    if (!processedKtClasses.add(ktClass)) continue;
 
                     List<RequestPath> classRequestPaths = getRequestPaths(ktClass);
 
@@ -372,15 +383,26 @@ public class SpringResolver extends BaseServiceResolver {
 
     private static Collection<PsiAnnotation> findAnnotationsByShortName(
             String shortName, Project project, GlobalSearchScope scope) {
+        // Skip index query in dumb mode — stub index may be inconsistent during indexing.
+        // This avoids triggering StubProcessingHelper.retrieveStubIdList errors on files
+        // whose stub trees haven't been built yet (actual stub count = 0).
+        if (DumbService.isDumb(project)) {
+            LOG.debug("Skipping @" + shortName + " annotation search — project is in dumb mode");
+            return new ArrayList<>();
+        }
         try {
             // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
             return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (Throwable e) {
-            // Handle index inconsistency gracefully - log and return empty collection
-            // This can happen when IDE index is corrupted, being rebuilt, or has stub/text mismatch
-            LOG.warn("Failed to find @" + shortName + " annotations (index may be inconsistent)", e);
+            // Handle index inconsistency gracefully — return empty collection.
+            // This can happen when the stub index references a file whose stub tree is missing
+            // (e.g. index cache corrupted, concurrent file changes during indexing).
+            // Note: IntelliJ platform logs this at ERROR level internally via
+            // StubProcessingHelper.retrieveStubIdList before our catch runs, so we log at
+            // debug level here to avoid duplicate noise.
+            LOG.debug("Failed to find @" + shortName + " annotations (stub index may be inconsistent)", e);
             return new ArrayList<>();
         }
     }

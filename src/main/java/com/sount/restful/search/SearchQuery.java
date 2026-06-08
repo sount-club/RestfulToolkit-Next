@@ -42,7 +42,9 @@ public record SearchQuery(
             int lastHash = remainder.lastIndexOf('#');
             String classPart = remainder.substring(0, lastHash).trim();
             String methodPart = remainder.substring(lastHash + 1).trim();
-            List<String> tokens = tokenize(remainder);
+            List<String> tokens = new ArrayList<>();
+            tokens.addAll(tokenize(classPart));
+            tokens.addAll(tokenize(methodPart));
             return new SearchQuery(trimmed, method,
                     null,
                     classPart.isEmpty() ? null : classPart,

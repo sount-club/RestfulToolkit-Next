@@ -2,6 +2,7 @@ package com.sount.restful.search;
 
 import com.intellij.ProjectTopics;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProcessCanceledException;
@@ -34,25 +35,16 @@ public class EndpointIndex implements Disposable {
     private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
     private final List<Runnable> myListeners = new CopyOnWriteArrayList<>();
 
-    private static final int DEBOUNCE_MS = 500;
+    private static final int DEBOUNCE_MS = 1000;
     private static final int RETRY_DELAY_MS = 2000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final int TEXT_SCAN_LIMIT = 4096;
     private volatile int retryCount = 0;
 
-    private static final String[] CONTROLLER_ANNOTATIONS = {
-            "org.springframework.stereotype.Controller",
-            "org.springframework.web.bind.annotation.RestController",
-            "javax.ws.rs.Path",
-            "jakarta.ws.rs.Path"
-    };
-
-    private static final String[] MAPPING_ANNOTATIONS = {
-            "org.springframework.web.bind.annotation.RequestMapping",
-            "org.springframework.web.bind.annotation.GetMapping",
-            "org.springframework.web.bind.annotation.PostMapping",
-            "org.springframework.web.bind.annotation.PutMapping",
-            "org.springframework.web.bind.annotation.DeleteMapping",
-            "org.springframework.web.bind.annotation.PatchMapping"
+    private static final String[] REST_ANNOTATION_SHORT_NAMES = {
+            "@Controller", "@RestController", "@Path",
+            "@RequestMapping", "@GetMapping", "@PostMapping",
+            "@PutMapping", "@DeleteMapping", "@PatchMapping"
     };
 
     public EndpointIndex(@NotNull Project project) {
@@ -185,6 +177,12 @@ public class EndpointIndex implements Disposable {
         PsiFile file = event.getFile();
         if (file == null || !file.isValid()) return;
 
+        // Fast path: skip non-Java/Kotlin files
+        var virtualFile = file.getVirtualFile();
+        if (virtualFile == null) return;
+        String ext = virtualFile.getExtension();
+        if (!"java".equals(ext) && !"kt".equals(ext)) return;
+
         // Only invalidate for files that likely contain REST annotations
         if (containsRestAnnotations(file)) {
             myDirty.set(true);
@@ -193,15 +191,12 @@ public class EndpointIndex implements Disposable {
     }
 
     private boolean containsRestAnnotations(@NotNull PsiFile file) {
+        // Only scan first 4KB — imports and class annotations are at the top
         String text = file.getText();
-        // Quick text check before expensive PSI traversal
-        for (String annotation : CONTROLLER_ANNOTATIONS) {
-            String simpleName = annotation.substring(annotation.lastIndexOf('.') + 1);
-            if (text.contains(simpleName)) return true;
-        }
-        for (String annotation : MAPPING_ANNOTATIONS) {
-            String simpleName = annotation.substring(annotation.lastIndexOf('.') + 1);
-            if (text.contains(simpleName)) return true;
+        int limit = Math.min(text.length(), TEXT_SCAN_LIMIT);
+        String head = text.substring(0, limit);
+        for (String shortName : REST_ANNOTATION_SHORT_NAMES) {
+            if (head.contains(shortName)) return true;
         }
         return false;
     }
@@ -218,45 +213,53 @@ public class EndpointIndex implements Disposable {
 
     private void doRebuild() {
         if (!myProject.isOpen() || myProject.isDisposed()) return;
+        myRebuilding.set(true);
 
-        try {
-            LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount + 1) + ")");
-            List<RestServiceItem> items = ReadAction.nonBlocking(
-                            () -> BaseServiceResolver.findAllEndpoints(myProject))
-                    .inSmartMode(myProject)
-                    .expireWith(myProject)
-                    .submit(AppExecutorUtil.getAppExecutorService())
-                    .get();
+        LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount + 1) + ")");
+        long startTime = System.nanoTime();
 
-            myItems = items != null ? items : Collections.emptyList();
+        ReadAction.nonBlocking(() -> {
+            try {
+                return BaseServiceResolver.findAllEndpoints(myProject);
+            } catch (ProcessCanceledException e) {
+                throw e;
+            } catch (Throwable e) {
+                LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount + 1) + ")", e);
+                return null;
+            }
+        })
+        .inSmartMode(myProject)
+        .expireWith(myProject)
+        .finishOnUiThread(ModalityState.defaultModalityState(), items -> {
+            long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+
+            if (items == null) {
+                // Error case: items is null means exception was caught inside the task
+                myRebuilding.set(false);
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                    retryCount++;
+                    LOG.info("Scheduling retry in " + RETRY_DELAY_MS + "ms...");
+                    myAlarm.cancelAllRequests();
+                    myAlarm.addRequest(this::doRebuild, RETRY_DELAY_MS);
+                } else {
+                    LOG.warn("Max retry attempts reached. Endpoint index may be incomplete.");
+                    myDirty.set(false);
+                    retryCount = 0;
+                    notifyListeners();
+                }
+                return;
+            }
+
+            myItems = items;
             myDirty.set(false);
             myRebuilding.set(false);
             retryCount = 0;
 
-            LOG.info("Endpoint index rebuild complete. Found " + myItems.size() + " endpoints.");
+            LOG.info("Endpoint index rebuild complete. Found " + items.size()
+                    + " endpoints in " + elapsedMs + "ms.");
             notifyListeners();
-        } catch (ProcessCanceledException e) {
-            throw e;
-        } catch (Throwable e) {
-            // Catch all errors including index inconsistency errors from IDE
-            // These are temporary issues that will resolve after IDE reindexes
-            LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount + 1) + ")", e);
-            myRebuilding.set(false);
-
-            // Schedule retry if we haven't exceeded max attempts
-            if (retryCount < MAX_RETRY_ATTEMPTS) {
-                retryCount++;
-                LOG.info("Scheduling retry in " + RETRY_DELAY_MS + "ms...");
-                myAlarm.cancelAllRequests();
-                myAlarm.addRequest(this::doRebuild, RETRY_DELAY_MS);
-            } else {
-                LOG.warn("Max retry attempts reached. Endpoint index may be incomplete.");
-                myDirty.set(false);
-                retryCount = 0;
-                // Notify listeners even on failure so UI can update
-                notifyListeners();
-            }
-        }
+        })
+        .submit(AppExecutorUtil.getAppExecutorService());
     }
 
     private void notifyListeners() {

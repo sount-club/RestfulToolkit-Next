@@ -47,4 +47,50 @@ public class SpringResolverTest extends BasePlatformTestCase {
         assertEquals(1, endpoints.size());
         assertEquals("/api/users", endpoints.get(0).getUrl());
     }
+
+    public void testFindAllEndpointsPreservesDuplicatePathsFromDifferentControllers() {
+        myFixture.configureByText("RestController.java", """
+                package org.springframework.web.bind.annotation;
+                public @interface RestController {}
+                """);
+        myFixture.configureByText("GetMapping.java", """
+                package org.springframework.web.bind.annotation;
+                public @interface GetMapping {
+                    String[] value() default {};
+                    String[] path() default {};
+                }
+                """);
+        myFixture.configureByText("UserController.java", """
+                package demo;
+
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                class UserController {
+                    @GetMapping("/api/users")
+                    public String users() {
+                        return "";
+                    }
+                }
+                """);
+        myFixture.configureByText("AdminController.java", """
+                package demo;
+
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                class AdminController {
+                    @GetMapping("/api/users")
+                    public String users() {
+                        return "";
+                    }
+                }
+                """);
+
+        List<RestServiceItem> endpoints = BaseServiceResolver.findAllEndpoints(getProject());
+
+        assertEquals(2, endpoints.size());
+    }
 }
