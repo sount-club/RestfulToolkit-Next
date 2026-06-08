@@ -5,13 +5,17 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.sount.restful.method.RequestPath;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +73,17 @@ public abstract class BaseServiceResolver implements ServiceResolver{
 
 
     public abstract List<RestServiceItem> getRestServiceItemList(Project project, GlobalSearchScope globalSearchScope) ;
+
+    @NotNull
+    protected List<PsiMethod> getClassMethodsIncludingParents(@NotNull PsiClass psiClass) {
+        List<PsiMethod> allMethods = new ArrayList<>();
+        PsiClass currentClass = psiClass;
+        while (currentClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(currentClass.getQualifiedName())) {
+            Collections.addAll(allMethods, currentClass.getMethods());
+            currentClass = currentClass.getSuperClass();
+        }
+        return allMethods;
+    }
 
     @Override
     public List<RestServiceItem> findAllSupportedServiceItemsInProject() {

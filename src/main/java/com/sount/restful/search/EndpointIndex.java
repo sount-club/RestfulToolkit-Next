@@ -37,14 +37,7 @@ public class EndpointIndex implements Disposable {
     private static final int DEBOUNCE_MS = 1000;
     private static final int RETRY_DELAY_MS = 2000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private static final int TEXT_SCAN_LIMIT = 4096;
     private volatile int retryCount = 0;
-
-    private static final String[] REST_ANNOTATION_SHORT_NAMES = {
-            "@Controller", "@RestController", "@Path",
-            "@RequestMapping", "@GetMapping", "@PostMapping",
-            "@PutMapping", "@DeleteMapping", "@PatchMapping"
-    };
 
     public EndpointIndex(@NotNull Project project) {
         myProject = project;
@@ -176,28 +169,17 @@ public class EndpointIndex implements Disposable {
         PsiFile file = event.getFile();
         if (file == null || !file.isValid()) return;
 
-        // Fast path: skip non-Java/Kotlin files
-        var virtualFile = file.getVirtualFile();
-        if (virtualFile == null) return;
-        String ext = virtualFile.getExtension();
-        if (!"java".equals(ext) && !"kt".equals(ext)) return;
-
-        // Only invalidate for files that likely contain REST annotations
-        if (containsRestAnnotations(file)) {
+        if (canAffectEndpointIndex(file)) {
             myDirty.set(true);
             debounceRebuild();
         }
     }
 
-    private boolean containsRestAnnotations(@NotNull PsiFile file) {
-        // Only scan first 4KB — imports and class annotations are at the top
-        String text = file.getText();
-        int limit = Math.min(text.length(), TEXT_SCAN_LIMIT);
-        String head = text.substring(0, limit);
-        for (String shortName : REST_ANNOTATION_SHORT_NAMES) {
-            if (head.contains(shortName)) return true;
-        }
-        return false;
+    static boolean canAffectEndpointIndex(@NotNull PsiFile file) {
+        var virtualFile = file.getVirtualFile();
+        if (virtualFile == null) return false;
+        String ext = virtualFile.getExtension();
+        return "java".equals(ext) || "kt".equals(ext);
     }
 
     private void debounceRebuild() {

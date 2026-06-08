@@ -1,9 +1,11 @@
 package com.sount.restful.search;
 
 import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.sount.restful.navigation.action.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
@@ -11,8 +13,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.*;
 
+@Service(Service.Level.PROJECT)
 @State(name = "RestServiceSearchHistory", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
 public class SearchHistory implements PersistentStateComponent<SearchHistory.State> {
+
+    private static final Logger LOG = Logger.getInstance(SearchHistory.class);
+    private static final Map<Project, SearchHistory> FALLBACK_INSTANCES =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private State myState = new State();
 
@@ -28,7 +35,12 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
     }
 
     public static SearchHistory getInstance(@NotNull Project project) {
-        return project.getService(SearchHistory.class);
+        SearchHistory history = project.getService(SearchHistory.class);
+        if (history != null) {
+            return history;
+        }
+        LOG.warn("SearchHistory project service is unavailable; using an in-memory fallback instance");
+        return FALLBACK_INSTANCES.computeIfAbsent(project, ignored -> new SearchHistory());
     }
 
     @Override

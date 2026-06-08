@@ -8,6 +8,10 @@ import com.sount.restful.navigation.action.RestServiceItem;
 
 public class SearchHistoryTest extends BasePlatformTestCase {
 
+    public void testRegisteredAsProjectService() {
+        assertNotNull(SearchHistory.getInstance(getProject()));
+    }
+
     public void testRecordsSelectedEndpointByQuery() {
         RestServiceItem item = createItem("GET", "/activity/rewardDetail");
         SearchHistory history = new SearchHistory();

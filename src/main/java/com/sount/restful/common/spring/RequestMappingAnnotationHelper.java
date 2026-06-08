@@ -5,6 +5,7 @@ import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiAnnotationMemberValue;
 import com.intellij.psi.PsiArrayInitializerMemberValue;
 import com.intellij.psi.PsiClass;
+import com.intellij.psi.CommonClassNames;
 import com.intellij.psi.PsiLiteralExpression;
 import com.intellij.psi.PsiMethod;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
@@ -27,11 +28,15 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
      * @return
      */
     public static List<RequestPath> getRequestPaths(PsiClass psiClass) {
+        List<RequestPath> list = new ArrayList<>();
+        if (psiClass.getModifierList() == null) {
+            return list;
+        }
+
         PsiAnnotation[] annotations = psiClass.getModifierList().getAnnotations();
-        if(annotations == null) return null;
+        if (annotations == null) return list;
 
         PsiAnnotation requestMappingAnnotation = null;
-        List<RequestPath> list = new ArrayList<>();
         for (PsiAnnotation annotation : annotations) {
             for (SpringRequestMethodAnnotation mappingAnnotation : SpringRequestMethodAnnotation.values()) {
 //            for (PathMappingAnnotation mappingAnnotation : PathMappingAnnotation.allPathMappingAnnotations) {
@@ -49,7 +54,7 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
         } else {
             // TODO : 继承 RequestMapping
             PsiClass superClass = psiClass.getSuperClass();
-            if (superClass != null && !superClass.getQualifiedName().equals("java.lang.Object")) {
+            if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
                 list = getRequestPaths(superClass);
             } else {
                 list.add(new RequestPath("/", null));
@@ -134,9 +139,12 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
      * @return
      */
     public static RequestPath[] getRequestPaths(PsiMethod psiMethod) {
-        PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
+        if (psiMethod.getModifierList() == null) {
+            return new RequestPath[0];
+        }
 
-        if(annotations == null) return null;
+        PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
+        if (annotations == null) return new RequestPath[0];
         List<RequestPath> list = new ArrayList<>();
 
         for (PsiAnnotation annotation : annotations) {

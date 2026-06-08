@@ -45,15 +45,9 @@ public class JaxrsResolver extends BaseServiceResolver {
 
             if (!(psiElement instanceof PsiClass psiClass)) continue;
 
-            PsiMethod[] psiMethods = psiClass.getMethods();
-
-            if (psiMethods == null) {
-                continue;
-            }
-
             String classUriPath = JaxrsAnnotationHelper.getClassUriPath(psiClass);
 
-            for (PsiMethod psiMethod : psiMethods) {
+            for (PsiMethod psiMethod : getClassMethodsIncludingParents(psiClass)) {
                 RequestPath[] methodUriPaths = JaxrsAnnotationHelper.getRequestPaths(psiMethod);
                 if (methodUriPaths == null) {
                     continue;

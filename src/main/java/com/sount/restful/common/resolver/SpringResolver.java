@@ -20,7 +20,8 @@ import com.sount.restful.common.spring.RequestMappingAnnotationHelper;
 import com.sount.restful.method.RequestPath;
 import com.sount.restful.method.action.PropertiesHandler;
 import com.sount.restful.navigation.action.RestServiceItem;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.kotlin.asJava.LightClassUtil;
+import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
 import org.jetbrains.kotlin.idea.stubindex.KotlinAnnotationsIndex;
 import org.jetbrains.kotlin.psi.KtAnnotationEntry;
 import org.jetbrains.kotlin.psi.KtCallExpression;
@@ -28,6 +29,7 @@ import org.jetbrains.kotlin.psi.KtClass;
 import org.jetbrains.kotlin.psi.KtCollectionLiteralExpression;
 import org.jetbrains.kotlin.psi.KtDeclaration;
 import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtModifierList;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
 import org.jetbrains.kotlin.psi.KtValueArgument;
 import org.jetbrains.kotlin.psi.KtValueArgumentList;
@@ -35,7 +37,6 @@ import org.jetbrains.kotlin.psi.KtValueArgumentName;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -100,15 +101,42 @@ public class SpringResolver extends BaseServiceResolver {
                     if (!processedKtClasses.add(ktClass)) continue;
 
                     List<RequestPath> classRequestPaths = getRequestPaths(ktClass);
+                    if (classRequestPaths.isEmpty()) {
+                        continue;
+                    }
 
-                    List<KtNamedFunction> ktNamedFunctions = getKtNamedFunctions(ktClass);
-                    for (KtNamedFunction fun : ktNamedFunctions) {
-                        List<RequestPath> requestPaths = getRequestPaths(fun);
+                    Set<String> processedKtMethodNames = new HashSet<>();
+                    for (KtNamedFunction fun : getKtNamedFunctions(ktClass)) {
+                        processedKtMethodNames.add(fun.getName());
+                        List<RequestPath> methodRequestPaths = getRequestPaths(fun);
+                        if (methodRequestPaths.isEmpty()) {
+                            continue;
+                        }
 
                         for (RequestPath classRequestPath : classRequestPaths) {
-                            for (RequestPath requestPath : requestPaths) {
-                                requestPath.concat(classRequestPath);
-                                itemList.add(createRestServiceItem(fun, "", requestPath));
+                            for (RequestPath methodRequestPath : methodRequestPaths) {
+                                RestServiceItem item = createRestServiceItem(fun, classRequestPath.getPath(), methodRequestPath);
+                                itemList.add(item);
+                            }
+                        }
+                    }
+
+                    // Use Light Class bridge to add inherited Kotlin/Java methods.
+                    List<PsiMethod> ktMethods = getAllKtMethods(ktClass);
+                    for (PsiMethod method : ktMethods) {
+                        if (processedKtMethodNames.contains(method.getName())) {
+                            continue;
+                        }
+                        RequestPath[] methodRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(method);
+                        if (isEmpty(methodRequestPaths)) {
+                            continue;
+                        }
+
+                        for (RequestPath classRequestPath : classRequestPaths) {
+                            for (RequestPath methodRequestPath : methodRequestPaths) {
+                                String path = classRequestPath.getPath();
+                                RestServiceItem item = createRestServiceItem(getKtMethodSourceElement(method), path, methodRequestPath);
+                                itemList.add(item);
                             }
                         }
                     }
@@ -128,16 +156,17 @@ public class SpringResolver extends BaseServiceResolver {
 
     protected List<RestServiceItem> getServiceItemList(PsiClass psiClass) {
 
-        PsiMethod[] psiMethods = psiClass.getMethods();
-        if (psiMethods == null) {
-            return new ArrayList<>();
-        }
-
         List<RestServiceItem> itemList = new ArrayList<>();
         List<RequestPath> classRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiClass);
+        if (classRequestPaths == null || classRequestPaths.isEmpty()) {
+            return itemList;
+        }
 
-        for (PsiMethod psiMethod : psiMethods) {
+        for (PsiMethod psiMethod : getClassMethodsIncludingParents(psiClass)) {
             RequestPath[] methodRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiMethod);
+            if (isEmpty(methodRequestPaths)) {
+                continue;
+            }
 
             for (RequestPath classRequestPath : classRequestPaths) {
                 for (RequestPath methodRequestPath : methodRequestPaths) {
@@ -167,10 +196,50 @@ public class SpringResolver extends BaseServiceResolver {
         return ktNamedFunctions;
     }
 
+    /**
+     * Get all methods from a Kotlin class including inherited ones via Light Class bridge.
+     * Manually traverses class hierarchy to collect methods from parent classes.
+     * Filters out java.lang.Object methods.
+     */
+    private List<PsiMethod> getAllKtMethods(KtClass ktClass) {
+        List<PsiMethod> methods = new ArrayList<>();
+        try {
+            if (LightClassUtil.INSTANCE.canGenerateLightClass(ktClass)) {
+                PsiClass lightClass = LightClassUtilsKt.toLightClass(ktClass);
+                if (lightClass != null) {
+                    methods.addAll(getClassMethodsIncludingParents(lightClass));
+                }
+            }
+        } catch (Exception e) {
+            LOG.debug("Failed to get Kotlin light class methods", e);
+        }
+        return methods;
+    }
+
+    private PsiElement getKtMethodSourceElement(PsiMethod method) {
+        try {
+            PsiElement unwrapped = LightClassUtilsKt.getUnwrapped(method);
+            if (unwrapped instanceof KtNamedFunction) {
+                return unwrapped;
+            }
+        } catch (Exception e) {
+            LOG.debug("Failed to unwrap Kotlin light method", e);
+        }
+        return method;
+    }
+
+    private boolean isEmpty(RequestPath[] requestPaths) {
+        return requestPaths == null || requestPaths.length == 0;
+    }
+
     private List<RequestPath> getRequestPaths(KtClass ktClass) {
         String defaultPath = "/";
         //方法注解
-        List<KtAnnotationEntry> annotationEntries = ktClass.getModifierList().getAnnotationEntries();
+        KtModifierList modifierList = ktClass.getModifierList();
+        if (modifierList == null) {
+            return new ArrayList<>();
+        }
+        List<KtAnnotationEntry> annotationEntries = modifierList.getAnnotationEntries();
 
         List<RequestPath>  requestPaths = getRequestMappings( defaultPath, annotationEntries);
         return requestPaths;
@@ -181,7 +250,11 @@ public class SpringResolver extends BaseServiceResolver {
 //        String defaultPath = fun.getName();
         String defaultPath = "/";
         //方法注解
-        List<KtAnnotationEntry> annotationEntries = fun.getModifierList().getAnnotationEntries();
+        KtModifierList modifierList = fun.getModifierList();
+        if (modifierList == null) {
+            return new ArrayList<>();
+        }
+        List<KtAnnotationEntry> annotationEntries = modifierList.getAnnotationEntries();
         List<RequestPath> requestPaths = getRequestMappings( defaultPath, annotationEntries);
         return requestPaths;
     }
@@ -343,7 +416,7 @@ public class SpringResolver extends BaseServiceResolver {
     private List<String> getAttributeValues(KtAnnotationEntry entry, String attribute) {
         KtValueArgumentList valueArgumentList = entry.getValueArgumentList();
 
-        if(valueArgumentList == null) return Collections.emptyList();
+        if(valueArgumentList == null) return new ArrayList<>();
 
         List<KtValueArgument> arguments = valueArgumentList.getArguments();
 
