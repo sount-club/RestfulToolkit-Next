@@ -27,9 +27,6 @@ public class RestfulToolkitBundle extends DynamicBundle {
         }
 
         @NonNls
-        public static final String TOOLKIT_NAVIGATOR_NOTHING_TO_DISPLAY = "toolkit.navigator.nothing.to.display";
-
-        @NonNls
         public static final String SEARCH_POPUP_TITLE = "search.popup.title";
         @NonNls
         public static final String SEARCH_POPUP_SEARCH_LABEL = "search.popup.search.label";
