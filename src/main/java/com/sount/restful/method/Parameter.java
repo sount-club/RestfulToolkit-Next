@@ -11,7 +11,8 @@ public class Parameter {  // MethodParameter
     private boolean required = false;
     private boolean requestBodyFound = false;
 
-    public Parameter() { }
+    public Parameter() {
+    }
 
     public Parameter(String paramType, String paramName) {
         this.paramType = paramType;
@@ -24,15 +25,9 @@ public class Parameter {  // MethodParameter
         this.defaultValue = defaultValue;
     }
 
- /*   public Parameter required() {
-        this.required = true;
-        return this;
-    }
-*/
     public String getParamType() {
         return paramType;
     }
-
 
 
     public void setParamType(String paramType) {
@@ -78,10 +73,8 @@ public class Parameter {  // MethodParameter
     }
 
     public String getShortTypeName() {
-    //todo : List
-
-        String shortName = paramType.substring(paramType.lastIndexOf(".") + 1, paramType.length());
-        return shortName;
+        //todo : List
+        return paramType.substring(paramType.lastIndexOf(".") + 1);
     }
 
 

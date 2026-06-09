@@ -1,6 +1,7 @@
 package com.sount.restful.method.action;
 
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
@@ -20,7 +21,7 @@ import java.util.*;
 // PropertySourcesLoader.load 配置文件加载类
 // 路径location：[file:./config/, file:./, classpath:/config/, classpath:/]
 //文件name：bootstrap，application
-//后缀：[properties, xml, yml, yaml]
+//后缀：[properties, XML, YML, YAML]
 //applicationConfig: [classpath:/application.yml]#prod
 
 // 如果存在 activeProfile spring.profiles.active 存在，判断是否存在 application-activeProfile. 文件，
@@ -28,6 +29,7 @@ import java.util.*;
 //最终可能优先级 application.properties>application.yml>bootstrap.propertis>bootstrap.yml
 //路径：classpath:/(resource)>classpath:/config/
 public class PropertiesHandler {
+    private static final Logger LOG = Logger.getInstance(PropertiesHandler.class);
 
     public String[] getFileExtensions() { //优先级
         return new String[]{"properties", "yml"};
@@ -36,9 +38,6 @@ public class PropertiesHandler {
     public String[] getConfigFiles() { // 优先级
         return new String[]{"application", "bootstrap"};
     }
-
-    public List<String> CONFIG_FILES = Arrays.asList("application", "bootstrap");
-    public List<String> FILE_EXTENSIONS = Arrays.asList("properties", "yml");
 
     String SPRING_PROFILE = "spring.profiles.active";
 
@@ -55,20 +54,7 @@ public class PropertiesHandler {
     }
 
     public String getServerPort() {
-        String port = null;
-        String serverPortKey = "server.port";
-
-        activeProfile = findProfilePropertyValue();
-
-        //
-        if (activeProfile != null) {
-            port = findPropertyValue(serverPortKey, activeProfile);
-        }
-        if (port == null) {
-            port = findPropertyValue(serverPortKey, null);
-        }
-
-        return port != null ? port : "";
+        return getProperty("server.port");
     }
 
     public String getProperty(String propertyKey) {
@@ -88,15 +74,14 @@ public class PropertiesHandler {
     }
 
 
-    /* try find spring.profiles.active value */
+    /* try to find spring.profiles.active value */
     private String findProfilePropertyValue() {
-        String activeProfile = findPropertyValue(SPRING_PROFILE, null);
-        return activeProfile;
+        return findPropertyValue(SPRING_PROFILE, null);
     }
 
     /* 暂时不考虑路径问题，默认找到的第一文件 */
     private String findPropertyValue(String propertyKey, String activeProfile) {
-        String value = null;
+        String value;
         String profile = activeProfile != null ? "-" + activeProfile : "";
         //
         for (String conf : getConfigFiles()) {
@@ -104,11 +89,11 @@ public class PropertiesHandler {
                 // load spring config file
                 String configFile = conf + profile + "." + ext;
                 if (ext.equals("properties")) {
-                    Properties properties = loadProertiesFromConfigFile(configFile);
+                    Properties properties = loadPropertiesFromConfigFile(configFile);
                     if (properties != null) {
-                        Object valueObj = properties.getProperty(propertyKey);
+                        String valueObj = properties.getProperty(propertyKey);
                         if (valueObj != null) {
-                            value = cleanPlaceholderIfExist((String) valueObj);
+                            value = cleanPlaceholderIfExist(valueObj);
                             return value;
                         }
                     }
@@ -130,10 +115,10 @@ public class PropertiesHandler {
             }
         }
 
-        return value;
+        return null;
     }
 
-    private Properties loadProertiesFromConfigFile(String configFile) {
+    private Properties loadPropertiesFromConfigFile(String configFile) {
         Properties properties = null;
         PsiFile applicationPropertiesFile = findPsiFileInModule(configFile);
         if (applicationPropertiesFile != null) {
@@ -148,27 +133,13 @@ public class PropertiesHandler {
         try {
             prop.load(new StringReader(text));
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.warn("Failed to load properties text", e);
         }
         return prop;
     }
 
     public String getContextPath() {
-        String key = "server.context-path";
-        String contextPath = null;
-
-        activeProfile = findProfilePropertyValue();
-
-        //
-        if (activeProfile != null) {
-            contextPath = findPropertyValue(key, activeProfile);
-        }
-        if (contextPath == null) {
-            contextPath = findPropertyValue(key, null);
-        }
-
-        return contextPath != null ? contextPath : "";
-
+        return getProperty("server.context-path");
     }
 
     private String cleanPlaceholderIfExist(String value) {
@@ -227,37 +198,32 @@ public class PropertiesHandler {
     }
 
     private void buildFlattenedMap(Map<String, Object> result, Map<String, Object> source, String path) {
-        Iterator<Map.Entry<String, Object>> iterator = source.entrySet().iterator();
-
-        while (true) {
-            while (iterator.hasNext()) {
-                Map.Entry<String, Object> entry = iterator.next();
-                String key = entry.getKey();
-                if (StringUtils.isNotBlank(path)) {
-                    if (key.startsWith("[")) {
-                        key = path + key;
-                    } else {
-                        key = path + '.' + key;
-                    }
-                }
-
-                Object value = entry.getValue();
-                if (value instanceof String) {
-                    result.put(key, value);
-                } else if (value instanceof Map<?, ?> mapValue) {
-                    this.buildFlattenedMap(result, toStringObjectMap(mapValue), key);
-                } else if (value instanceof Collection<?> collection) {
-                    int count = 0;
-
-                    for (Object object : collection) {
-                        this.buildFlattenedMap(result, Collections.singletonMap("[" + count++ + "]", object), key);
-                    }
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            String key = entry.getKey();
+            if (StringUtils.isNotBlank(path)) {
+                if (key.startsWith("[")) {
+                    key = path + key;
                 } else {
-                    result.put(key, value != null ? value : "");
+                    key = path + '.' + key;
                 }
             }
 
-            return;
+            Object value = entry.getValue();
+            if (value == null) {
+                result.put(key, "");
+            } else {
+                switch (value) {
+                    case Map<?, ?> mapValue -> this.buildFlattenedMap(result, toStringObjectMap(mapValue), key);
+                    case Collection<?> collection -> {
+                        int count = 0;
+
+                        for (Object object : collection) {
+                            this.buildFlattenedMap(result, Collections.singletonMap("[" + count++ + "]", object), key);
+                        }
+                    }
+                    default -> result.put(key, value);
+                }
+            }
         }
     }
 

@@ -11,8 +11,8 @@ public enum SpringControllerAnnotation implements PathMappingAnnotation {
         this.qualifiedName = qualifiedName;
     }
 
-    private String shortName;
-    private String qualifiedName;
+    private final String shortName;
+    private final String qualifiedName;
 
     public String getQualifiedName() {
         return qualifiedName;

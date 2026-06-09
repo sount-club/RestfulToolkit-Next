@@ -28,7 +28,7 @@ import java.awt.*;
 
 @Service(Service.Level.PROJECT)
 @State(name = "RestServicesNavigator", storages = {@Storage(StoragePathMacros.WORKSPACE_FILE)})
-public class RestServicesNavigator implements PersistentStateComponent<RestServicesNavigatorState> {
+public final class RestServicesNavigator implements PersistentStateComponent<RestServicesNavigatorState> {
 
     public static final Logger LOG = Logger.getInstance(RestServicesNavigator.class);
 

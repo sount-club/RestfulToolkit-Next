@@ -5,14 +5,7 @@ import com.sount.utils.JsonUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpDelete;
-import org.apache.http.client.methods.HttpEntityEnclosingRequestBase;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPatch;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpPut;
-import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.methods.*;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
@@ -23,6 +16,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,7 +26,7 @@ import java.util.Map;
 public class RequestHelper {
 
     private static final Logger LOG = Logger.getInstance(RequestHelper.class);
-    private static final Charset UTF8 = Charset.forName("UTF-8");
+    private static final Charset UTF8 = StandardCharsets.UTF_8;
     private static final int TIMEOUT_MS = 30_000;
 
     private static final PoolingHttpClientConnectionManager CONNECTION_MANAGER = new PoolingHttpClientConnectionManager();
@@ -82,12 +76,18 @@ public class RequestHelper {
         }
 
         switch (method.toUpperCase()) {
-            case "GET": return execute(new HttpGet(ensureHttp(url)), headers);
-            case "POST": return execute(new HttpPost(ensureHttp(url)), headers);
-            case "PUT": return execute(new HttpPut(ensureHttp(url)), headers);
-            case "PATCH": return execute(new HttpPatch(ensureHttp(url)), headers);
-            case "DELETE": return execute(new HttpDelete(ensureHttp(url)), headers);
-            default: return failedResult("not supported method : " + method + ".", 0L);
+            case "GET":
+                return execute(new HttpGet(ensureHttp(url)), headers);
+            case "POST":
+                return execute(new HttpPost(ensureHttp(url)), headers);
+            case "PUT":
+                return execute(new HttpPut(ensureHttp(url)), headers);
+            case "PATCH":
+                return execute(new HttpPatch(ensureHttp(url)), headers);
+            case "DELETE":
+                return execute(new HttpDelete(ensureHttp(url)), headers);
+            default:
+                return failedResult("not supported method : " + method + ".", 0L);
         }
     }
 
@@ -101,10 +101,14 @@ public class RequestHelper {
         }
 
         switch (method.toUpperCase()) {
-            case "POST": return postRequestBodyWithJsonForResult(url, json, headers);
-            case "PUT": return putRequestBodyWithJsonForResult(url, json, headers);
-            case "PATCH": return patchRequestBodyWithJsonForResult(url, json, headers);
-            default: return requestForResult(url, method, headers);
+            case "POST":
+                return postRequestBodyWithJsonForResult(url, json, headers);
+            case "PUT":
+                return putRequestBodyWithJsonForResult(url, json, headers);
+            case "PATCH":
+                return patchRequestBodyWithJsonForResult(url, json, headers);
+            default:
+                return requestForResult(url, method, headers);
         }
     }
 
@@ -114,10 +118,14 @@ public class RequestHelper {
         }
 
         switch (method.toUpperCase()) {
-            case "POST": return postFormForResult(url, formData, headers);
-            case "PUT": return putFormForResult(url, formData, headers);
-            case "PATCH": return patchFormForResult(url, formData, headers);
-            default: return requestForResult(url, method, headers);
+            case "POST":
+                return postFormForResult(url, formData, headers);
+            case "PUT":
+                return putFormForResult(url, formData, headers);
+            case "PATCH":
+                return patchFormForResult(url, formData, headers);
+            default:
+                return requestForResult(url, method, headers);
         }
     }
 

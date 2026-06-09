@@ -15,8 +15,7 @@ public class ConvertClassToJSONCompressedAction extends ConvertClassToJSONAction
 
         PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
         PsiClass psiClass = getPsiClass(psiElement);
-
-        if(psiClass == null) return;
+        if (psiClass == null) return;
 
         String json = PsiClassHelper.create(psiClass).convertClassToJSON(myProject(e), false);
         CopyPasteManager.getInstance().setContents(new StringSelection(json));

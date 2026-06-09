@@ -1,10 +1,6 @@
 package com.sount.restful.search;
 
-import com.intellij.openapi.components.PersistentStateComponent;
-import com.intellij.openapi.components.Service;
-import com.intellij.openapi.components.State;
-import com.intellij.openapi.components.Storage;
-import com.intellij.openapi.components.StoragePathMacros;
+import com.intellij.openapi.components.*;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.sount.restful.navigation.action.RestServiceItem;
@@ -90,10 +86,6 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         return myState.selectedEndpointsByQuery.get(normalizedQuery);
     }
 
-    public void recordWindowState(@NotNull String query, int selectedIndex, int firstVisibleIndex) {
-        recordWindowState(query, selectedIndex, firstVisibleIndex, -1);
-    }
-
     public void recordWindowState(@NotNull String query, int selectedIndex, int firstVisibleIndex, int scrollY) {
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return;
@@ -124,10 +116,6 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.scrollYByQuery.get(normalizedQuery);
-    }
-
-    public boolean isFavorite(@NotNull RestServiceItem item) {
-        return myState.favoriteEndpoints.contains(item.getEndpointKey());
     }
 
     public long getLastAccessTime(@NotNull RestServiceItem item) {

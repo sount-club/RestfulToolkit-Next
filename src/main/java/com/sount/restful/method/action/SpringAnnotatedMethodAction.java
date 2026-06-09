@@ -5,13 +5,14 @@ import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifierList;
-import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.action.AbstractBaseAction;
-import com.sount.restful.annotations.SpringControllerAnnotation;
+import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
 import com.sount.restful.common.PsiMethodHelper;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Restful method （restful 方法添加方法 ）
@@ -24,7 +25,7 @@ public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
      * @param e
      */
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
         PsiMethod psiMethod = findTargetMethod(e);
         boolean visible = psiMethod != null &&
                 (isRestController(psiMethod.getContainingClass()) || isRestfulMethod(psiMethod));
@@ -36,34 +37,28 @@ public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
         if (containingClass == null || containingClass.getModifierList() == null) {
             return false;
         }
-        PsiModifierList modifierList = containingClass.getModifierList();
-
-        /*return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ;*/
-
-        return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null /*||
-                modifierList.findAnnotation(JaxrsRequestAnnotation.PATH.getQualifiedName()) != null*/;
+        return PsiMethodHelper.isSpringRestSupported(containingClass);
     }
 
     private boolean isRestfulMethod(PsiMethod psiMethod) {
         final PsiModifierList modifierList = psiMethod.getModifierList();
-        if (modifierList == null) {
-            return false;
-        }
         PsiAnnotation[] annotations = modifierList.getAnnotations();
 
         for (PsiAnnotation annotation : annotations) {
-            boolean match = Arrays.stream(SpringRequestMethodAnnotation.values()).map(sra -> sra.getQualifiedName()).anyMatch(name -> name.equals(annotation.getQualifiedName()));
-            if (match) return match;
-        }
-
-        for (PsiAnnotation annotation : annotations) {
-            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values()).map(sra -> sra.getQualifiedName()).anyMatch(name -> name.equals(annotation.getQualifiedName()));
+            boolean match = Arrays.stream(SpringRequestMethodAnnotation.values())
+                    .map(SpringRequestMethodAnnotation::getQualifiedName)
+                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
             if (match) return true;
         }
 
-        return PsiMethodHelper.isJaxrsRestSupported(psiMethod.getContainingClass());
+        for (PsiAnnotation annotation : annotations) {
+            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values())
+                    .map(JaxrsHttpMethodAnnotation::getQualifiedName)
+                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+            if (match) return true;
+        }
+
+        return PsiMethodHelper.isJaxrsRestSupported(Objects.requireNonNull(psiMethod.getContainingClass()));
     }
 
 

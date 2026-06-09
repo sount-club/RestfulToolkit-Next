@@ -2,12 +2,10 @@ package com.sount.restful.common;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.*;
 import com.intellij.psi.impl.source.PsiClassReferenceType;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.search.PsiShortNamesCache;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -23,8 +21,6 @@ public class PsiClassHelper {
     PsiClass psiClass;
 
     private int autoCorrelationCount = 0; //标记实体递归
-    private int listIterateCount = 0; //标记List递归
-    private Module myModule;
 
     protected PsiClassHelper(@NotNull PsiClass psiClass) {
         this.psiClass = psiClass;
@@ -70,20 +66,38 @@ public class PsiClassHelper {
         Object paramValue = null;
 //        todo: using map later
         switch (paramType.toLowerCase()) {
-            case "byte": paramValue = Byte.valueOf("1");break;
-            case "char": paramValue = Character.valueOf('Z');break;
-            case "character": paramValue = Character.valueOf('Z');break;
-            case "boolean": paramValue = Boolean.TRUE;break;
-            case "int": paramValue = Integer.valueOf(1);break;
-            case "integer": paramValue = Integer.valueOf(1);break;
-            case "double": paramValue = Double.valueOf(1);break;
-            case "float": paramValue = Float.valueOf(1.0F);break;
-            case "long": paramValue = Long.valueOf(1L);break;
-            case "short": paramValue = Short.valueOf("1");break;
-            case "bigdecimal": return BigDecimal.ONE;
-            case "string": paramValue = "demoData";break;
-            case "date": paramValue = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());break; // todo: format date
-            case "localdatetime": paramValue = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());break; // todo: format date
+            case "byte":
+                paramValue = Byte.valueOf("1");
+                break;
+            case "char", "character":
+                paramValue = 'Z';
+                break;
+            case "boolean":
+                paramValue = Boolean.TRUE;
+                break;
+            case "int", "integer":
+                paramValue = 1;
+                break;
+            case "double":
+                paramValue = 1.0;
+                break;
+            case "float":
+                paramValue = 1.0F;
+                break;
+            case "long":
+                paramValue = 1L;
+                break;
+            case "short":
+                paramValue = Short.valueOf("1");
+                break;
+            case "bigdecimal":
+                return BigDecimal.ONE;
+            case "string":
+                paramValue = "demoData";
+                break;
+            case "date", "localdatetime":
+                paramValue = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                break; // todo: format date
 //            default: paramValue = paramType;
         }
         return paramValue;
@@ -107,7 +121,7 @@ public class PsiClassHelper {
                 return handleListParam(psiFieldType, project);
             }
 
-            ((PsiClassReferenceType) psiFieldType).resolve().getFields(); // if is Enum
+            Objects.requireNonNull(((PsiClassReferenceType) psiFieldType).resolve()).getFields(); // if is Enum
 
             String fullName = psiFieldType.getCanonicalText();
             PsiClass fieldClass = findOnePsiClassByClassName(fullName, project);
@@ -115,9 +129,9 @@ public class PsiClassHelper {
             // 处理递归
             if (fieldClass != null) {
 //                todo: 处理递归问题 autoCorrelationCount
-                if(autoCorrelationCount > 0) return new HashMap();
-                if(fullName.equals(fieldClass.getQualifiedName())){
-                    autoCorrelationCount ++;
+                if (autoCorrelationCount > 0) return new HashMap<>();
+                if (fullName.equals(fieldClass.getQualifiedName())) {
+                    autoCorrelationCount++;
                 }
 
                 return assembleClassToMap(fieldClass, project);
@@ -135,63 +149,12 @@ public class PsiClassHelper {
         return JavaPsiFacade.getInstance(project).findClass(qualifiedClassName, GlobalSearchScope.allScope(project));
     }
 
-    public Collection<PsiClass> tryDetectPsiClassByShortClassName(Project project, String shortClassName) {
-        PsiClass[] psiClasses = PsiShortNamesCache.getInstance(project).getClassesByName(shortClassName, GlobalSearchScope.projectScope(project));
-
-        if (psiClasses.length > 0) {
-            return Arrays.asList(psiClasses);
-        }
-
-        if (myModule != null) {
-            psiClasses = PsiShortNamesCache.getInstance(project).getClassesByName(shortClassName, GlobalSearchScope.allScope(project));
-            return Arrays.asList(psiClasses);
-        }
-
-        return Collections.emptyList();
-    }
-
-
-    @Nullable
-    public PsiClass findOnePsiClassByClassName2(String className, Project project) {
-        String shortClassName = className.substring(className.lastIndexOf(".") + 1);
-
-        PsiClass[] psiClasses = tryDetectPsiClassByShortClassName2(shortClassName, project);
-        if (psiClasses.length == 0) {
-            return null;
-        }
-        if (psiClasses.length == 1) {
-            return psiClasses[0];
-        }
-
-        return Arrays.stream(psiClasses)
-                .filter(tempPsiClass -> tempPsiClass.getQualifiedName().equals(className))
-                .findFirst()
-                .orElse(null);
-    }
-    public PsiClass[] tryDetectPsiClassByShortClassName2(String shortClassName,Project project) {
-
-        PsiClass[] psiClasses = PsiShortNamesCache.getInstance(project).getClassesByName(shortClassName, GlobalSearchScope.allScope(project));// 所有的
-
-        if (psiClasses != null && psiClasses.length > 0) {
-            return psiClasses;
-        }
-
-        if(myModule != null) {
-            psiClasses = PsiShortNamesCache.getInstance(project).getClassesByName(shortClassName, GlobalSearchScope.allScope(project));// 所有的
-            if (psiClasses != null && psiClasses.length > 0) {
-                return psiClasses;
-            }
-        }
-
-        return new PsiClass[0];
-    }
-
 
     public Map<String, Object> assembleClassToMap(String className, Project project) {
         PsiClass psiClass = findOnePsiClassByClassName(className, project);
 
         Map<String, Object> jsonMap = new HashMap<>();
-        if(psiClass != null){
+        if (psiClass != null) {
             jsonMap = assembleClassToMap(psiClass, project);
         }
         return jsonMap;
@@ -202,7 +165,7 @@ public class PsiClassHelper {
         return assembleClassToMap(psiClass, project, defaultRecursiveCount);
     }
 
-    public Map<String, Object> assembleClassToMap(PsiClass psiClass, Project project,int recursiveCount) {
+    public Map<String, Object> assembleClassToMap(PsiClass psiClass, Project project, int recursiveCount) {
 
         Map<String, Object> map = new LinkedHashMap<>();
         PsiField[] fields = psiClass.getFields();
@@ -221,11 +184,11 @@ public class PsiClassHelper {
             if (psiFieldType instanceof PsiArrayType) {
                 PsiType psiType = ((PsiArrayType) psiFieldType).getComponentType();
 
-                Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue( psiType.getPresentableText() );
+                Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(psiType.getPresentableText());
                 if (baseTypeDefaultValue != null) {
                     List<Object> objects = new ArrayList<>();
                     objects.add(baseTypeDefaultValue);
-                    map.put(fieldName, objects );
+                    map.put(fieldName, objects);
                 }
 
                 continue;
@@ -233,15 +196,15 @@ public class PsiClassHelper {
 
             PsiClass resolveClass = ((PsiClassReferenceType) psiFieldType).resolve();
             if (isEnum(psiFieldType)) {
-                PsiField psiField = resolveClass.getFields()[0];
+                PsiField psiField = Objects.requireNonNull(resolveClass).getFields()[0];
                 map.put(fieldName, psiField.getName());
                 continue;
             }
 
 //            self recursion
-            if (resolveClass.getQualifiedName().equals(psiClass.getQualifiedName())) {
+            if (Objects.equals(Objects.requireNonNull(resolveClass).getQualifiedName(), psiClass.getQualifiedName())) {
                 if (recursiveCount > 0) {
-                    Map<String, Object> objectMap = assembleClassToMap(resolveClass, project,0);
+                    Map<String, Object> objectMap = assembleClassToMap(resolveClass, project, 0);
                     map.put(fieldName, objectMap);
                     continue;
                 }
@@ -251,10 +214,10 @@ public class PsiClassHelper {
 
             if (isListFieldType(psiFieldType)) {
                 PsiType[] parameters = ((PsiClassReferenceType) psiFieldType).getParameters();
-                if (parameters != null && parameters.length > 0) {
+                if (parameters.length > 0) {
                     PsiType parameter = parameters[0];
 // 自关联
-                    if (recursiveCount <= 0 )  {
+                    if (recursiveCount <= 0) {
                         continue;
                     }
 
@@ -264,11 +227,11 @@ public class PsiClassHelper {
                         continue;
                     }
 
-                    Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue( parameter.getPresentableText() );
+                    Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(parameter.getPresentableText());
                     if (baseTypeDefaultValue != null) {
                         List<Object> objects = new ArrayList<>();
                         objects.add(baseTypeDefaultValue);
-                        map.put(fieldName, objects );
+                        map.put(fieldName, objects);
                         continue;
                     }
 
@@ -279,9 +242,8 @@ public class PsiClassHelper {
                         }
                         PsiClass onePsiClassByClassName = findOnePsiClassByClassName(parameter.getCanonicalText(), project);
 
-                        Map<String, Object> objectMap = assembleClassToMap(onePsiClassByClassName, project, 0);
+                        Map<String, Object> objectMap = assembleClassToMap(Objects.requireNonNull(onePsiClassByClassName), project, 0);
                         map.put(fieldName, objectMap);
-                        continue;
                     }
                 }
 
@@ -298,7 +260,7 @@ public class PsiClassHelper {
         }
 
         PsiClass resolvePsiClass = ((PsiClassReferenceType) psiFieldType).resolve();
-        if (resolvePsiClass.getQualifiedName().equals("java.util.List")) {
+        if (Objects.equals(Objects.requireNonNull(resolvePsiClass).getQualifiedName(), "java.util.List")) {
             return true;
         }
 
@@ -313,10 +275,10 @@ public class PsiClassHelper {
 
     /* 字段是否为List 类型*/
     private static boolean isEnum(PsiType psiFieldType) {
-        if (! (psiFieldType instanceof PsiClassReferenceType)) {
+        if (!(psiFieldType instanceof PsiClassReferenceType)) {
             return false;
         }
-        return ((PsiClassReferenceType) psiFieldType).resolve().isEnum();
+        return Objects.requireNonNull(((PsiClassReferenceType) psiFieldType).resolve()).isEnum();
     }
 
 
@@ -331,8 +293,7 @@ public class PsiClassHelper {
     }
 
 
-    public PsiClassHelper withModule(Module module) {
-        this.myModule = module;
+    public PsiClassHelper withModule() {
         return this;
     }
 }

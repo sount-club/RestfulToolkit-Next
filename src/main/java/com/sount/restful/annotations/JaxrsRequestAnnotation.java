@@ -11,9 +11,9 @@ public enum JaxrsRequestAnnotation {
         this.methodName = methodName;
     }
 
-    private String shortName;
-    private String qualifiedName;
-    private String methodName;
+    private final String shortName;
+    private final String qualifiedName;
+    private final String methodName;
 
    public String methodName() {
         return this.methodName;

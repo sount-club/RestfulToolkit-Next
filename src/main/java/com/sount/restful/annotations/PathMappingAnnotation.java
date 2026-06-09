@@ -1,13 +1,9 @@
 package com.sount.restful.annotations;
 
 public interface PathMappingAnnotation {
-//    List<PathMappingAnnotation> allPathMappingAnnotations = new ArrayList<>();
-    public String getQualifiedName() ;
+    //    List<PathMappingAnnotation> allPathMappingAnnotations = new ArrayList<>();
+    String getQualifiedName();
 
-    public String getShortName();
-
-//    public List<PathMappingAnnotation> getPathMappings();
-
-//    public void addToPathList(PathMapping mapping);
+    String getShortName();
 
 }

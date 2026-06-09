@@ -5,16 +5,17 @@ import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.sount.restful.common.PsiClassHelper;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.datatransfer.StringSelection;
 
 public class ConvertClassToJSONAction extends AbstractBaseAction {
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
         PsiClass psiClass = findTargetClass(e);
 
-        if(psiClass == null) return;
+        if (psiClass == null) return;
 
         String json = PsiClassHelper.create(psiClass).convertClassToJSON(myProject(e), true);
         CopyPasteManager.getInstance().setContents(new StringSelection(json));
@@ -26,7 +27,7 @@ public class ConvertClassToJSONAction extends AbstractBaseAction {
     }
 
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
         setActionPresentationVisible(e, findTargetClass(e) != null);
     }
 }

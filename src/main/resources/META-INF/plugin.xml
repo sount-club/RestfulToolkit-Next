@@ -121,7 +121,7 @@
 					class="com.sount.restful.action.ConvertClassToJSONCompressedAction" text="Convert to JSON (Compressed)"
 					description="Convert to JSON (Compressed)"/>
 			<action id="ConvertClassToBulkValueAction" class="com.sount.restful.action.ConvertClassToBulkValueAction"
-					text="Convert to Bulk Value" description="Convert to Bulk Value"/>
+                    text="Convert to Bulk Value" description="Convert to bulk value"/>
 		</group>
 
 		<!-- url 导航 -->

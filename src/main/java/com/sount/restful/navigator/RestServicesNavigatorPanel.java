@@ -32,15 +32,14 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
     private final JTree myTree;
     RestServiceDetail myRestServiceDetail;
 
-    private Splitter servicesContentPaneSplitter;
-    private SearchTextField searchField;
+    private final SearchTextField searchField;
 
     public RestServicesNavigatorPanel(Project project, JTree tree) {
         super(true, true);
 
         myProject = project;
         myTree = tree;
-        myRestServiceDetail = project.getService(RestServiceDetail.class);
+        myRestServiceDetail = RestServiceDetail.getInstance(project);
 
         myTree.setBorder(JBUI.Borders.empty());
         JScrollPane scrollPane = ScrollPaneFactory.createScrollPane(myTree);
@@ -48,7 +47,7 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
         scrollPane.setViewportBorder(JBUI.Borders.empty());
         scrollPane.getViewport().setBackground(myTree.getBackground());
 
-        servicesContentPaneSplitter = new Splitter(true, 0.5f);
+        final Splitter servicesContentPaneSplitter = new Splitter(true, 0.5f);
         servicesContentPaneSplitter.setShowDividerControls(true);
         servicesContentPaneSplitter.setDividerWidth(10);
         servicesContentPaneSplitter.setBorder(JBUI.Borders.empty());

@@ -4,6 +4,7 @@ package com.sount.restful.common.jaxrs;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiModifierList;
 import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.JaxrsPathAnnotation;
 import com.sount.restful.common.PsiAnnotationHelper;
@@ -13,7 +14,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 public class JaxrsAnnotationHelper {
 
@@ -25,12 +26,9 @@ public class JaxrsAnnotationHelper {
 
     /**
      * 过滤所有注解
-     * @param psiMethod
-     * @return
      */
     public static RequestPath[] getRequestPaths(PsiMethod psiMethod) {
         PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
-        if(annotations == null) return null;
         List<RequestPath> list = new ArrayList<>();
 
         PsiAnnotation wsPathAnnotation = psiMethod.getModifierList().findAnnotation(JaxrsPathAnnotation.PATH.getQualifiedName());
@@ -38,29 +36,26 @@ public class JaxrsAnnotationHelper {
 
         JaxrsHttpMethodAnnotation[] jaxrsHttpMethodAnnotations = JaxrsHttpMethodAnnotation.values();
 
-        /*for (PsiAnnotation annotation : annotations) {
-            for (JaxrsHttpMethodAnnotation methodAnnotation : jaxrsHttpMethodAnnotations) {
-                if (annotation.getQualifiedName().equals(methodAnnotation.getQualifiedName())) {
-                    list.add(new RequestPath(path, methodAnnotation.getShortName()));
-                }
-            }
-        }*/
+        Arrays.stream(annotations)
+                .forEach(a -> Arrays.stream(jaxrsHttpMethodAnnotations)
+                        .forEach(methodAnnotation -> {
+                            if (Objects.equals(a.getQualifiedName(), methodAnnotation.getQualifiedName())) {
+                                list.add(new RequestPath(path, methodAnnotation.getShortName()));
+                            }
+                        })
+                );
 
-        Arrays.stream(annotations).forEach(a-> Arrays.stream(jaxrsHttpMethodAnnotations).forEach(methodAnnotation-> {
-            if (a.getQualifiedName().equals(methodAnnotation.getQualifiedName())) {
-                list.add(new RequestPath(path, methodAnnotation.getShortName()));
-            }
-        }));
-
-        return list.toArray(new RequestPath[list.size()]);
+        return list.toArray(new RequestPath[0]);
     }
 
 
     public static String getClassUriPath(PsiClass psiClass) {
-        PsiAnnotation annotation = psiClass.getModifierList().findAnnotation(JaxrsPathAnnotation.PATH.getQualifiedName());
-
+        PsiModifierList modifierList = psiClass.getModifierList();
+        if (modifierList == null) {
+            return "";
+        }
+        PsiAnnotation annotation = modifierList.findAnnotation(JaxrsPathAnnotation.PATH.getQualifiedName());
         String path = PsiAnnotationHelper.getAnnotationAttributeValue(annotation, "value");
-
         return path != null ? path : "";
     }
 
@@ -68,23 +63,19 @@ public class JaxrsAnnotationHelper {
     public static String getMethodUriPath(PsiMethod psiMethod) {
         JaxrsHttpMethodAnnotation requestAnnotation = null;
 
-        List<JaxrsHttpMethodAnnotation> httpMethodAnnotations = Arrays.stream(JaxrsHttpMethodAnnotation.values()).filter(annotation ->
-                psiMethod.getModifierList().findAnnotation(annotation.getQualifiedName()) != null
-        ).collect(Collectors.toList());
+        List<JaxrsHttpMethodAnnotation> httpMethodAnnotations = Arrays.stream(JaxrsHttpMethodAnnotation.values())
+                .filter(annotation -> psiMethod.getModifierList().findAnnotation(annotation.getQualifiedName()) != null)
+                .toList();
 
-       /* if (httpMethodAnnotations.size() == 0) {
-            requestAnnotation = null;
-        }*/
-
-        if (httpMethodAnnotations.size() > 0) {
-            requestAnnotation = httpMethodAnnotations.get(0);
+        if (!httpMethodAnnotations.isEmpty()) {
+            requestAnnotation = httpMethodAnnotations.getFirst();
         }
 
         String mappingPath;
-        if(requestAnnotation != null){
+        if (requestAnnotation != null) {
             PsiAnnotation annotation = psiMethod.getModifierList().findAnnotation(JaxrsPathAnnotation.PATH.getQualifiedName());
             mappingPath = getWsPathValue(annotation);
-        }else {
+        } else {
             String methodName = psiMethod.getName();
             mappingPath = StringUtils.uncapitalize(methodName);
         }

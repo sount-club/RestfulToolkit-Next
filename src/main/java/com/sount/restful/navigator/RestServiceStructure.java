@@ -35,20 +35,16 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class RestServiceStructure {
     public static final Logger LOG = Logger.getInstance(RestServiceStructure.class);
     private final Project myProject;
-    private final RestServiceProjectsManager myProjectsManager;
-    private final Map<RestServiceProject, ProjectNode> myProjectToNodeMapping = new HashMap<>();
     RestServiceDetail myRestServiceDetail;
-    private JTree myTree;
-    private DefaultTreeModel myTreeModel;
-    private RootNode myRoot;
+    private final JTree myTree;
+    private final DefaultTreeModel myTreeModel;
+    private final RootNode myRoot;
     private int serviceCount = 0;
     private int totalServiceCount = 0;
     private final AtomicLong detailRequestSequence = new AtomicLong();
@@ -62,9 +58,8 @@ public class RestServiceStructure {
                                 RestServiceProjectsManager projectsManager,
                                 JTree tree) {
         myProject = project;
-        myProjectsManager = projectsManager;
         myTree = tree;
-        myRestServiceDetail = project.getService(RestServiceDetail.class);
+        myRestServiceDetail = RestServiceDetail.getInstance(project);
 
         myRoot = new RootNode();
         myTreeModel = new DefaultTreeModel(myRoot);
@@ -159,7 +154,6 @@ public class RestServiceStructure {
     private void rebuildTree() {
         serviceCount = 0;
 
-        myProjectToNodeMapping.clear();
         myRoot.projectNodes.clear();
 
         for (RestServiceProject each : allProjects) {
@@ -169,7 +163,6 @@ public class RestServiceStructure {
             }
             serviceCount += node.serviceNodes.size();
             myRoot.projectNodes.add(node);
-            myProjectToNodeMapping.put(each, node);
         }
 
         if (myTree.getSelectionPath() == null) {
@@ -410,7 +403,7 @@ public class RestServiceStructure {
 
             ReadAction.nonBlocking(() -> buildServiceDetailState(myServiceItem))
                     .inSmartMode(myProject)
-                    .expireWith(myProject)
+                    .expireWith(RestServiceProjectsManager.getInstance(myProject))
                     .finishOnUiThread(ModalityState.defaultModalityState(), detailState -> {
                         if (requestId != detailRequestSequence.get()) {
                             return;

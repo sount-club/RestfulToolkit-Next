@@ -133,7 +133,7 @@ public final class UnifiedSearchPopup {
 
         JButton searchAllModulesBtn = new JButton(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SEARCH_ALL_MODULES));
         searchAllModulesBtn.setFont(searchAllModulesBtn.getFont().deriveFont(Font.PLAIN, searchAllModulesBtn.getFont().getSize() - 2f));
-        searchAllModulesBtn.setMargin(new Insets(2, 8, 2, 8));
+        searchAllModulesBtn.setMargin(JBUI.insets(2, 8, 2, 8));
         searchAllModulesBtn.setVisible(false);
         searchAllModulesBtn.addActionListener(e -> {
             moduleCombo.setSelectedIndex(0);
@@ -323,14 +323,14 @@ public final class UnifiedSearchPopup {
                 super.paintComponent(g);
                 if (isSelected()) {
                     Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setColor(new Color(0x4A90D9));
+                    g2.setColor(new JBColor(new Color(0x4A90D9), new Color(0x6AA8F0)));
                     g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 4, 4);
                     g2.dispose();
                 }
             }
         };
         btn.setFont(btn.getFont().deriveFont(Font.PLAIN, btn.getFont().getSize() - 2f));
-        btn.setMargin(new Insets(2, 6, 2, 6));
+        btn.setMargin(JBUI.insets(2, 6, 2, 6));
         btn.setFocusPainted(false);
 
         btn.addChangeListener(e -> btn.repaint());

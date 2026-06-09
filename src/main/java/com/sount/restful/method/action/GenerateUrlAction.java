@@ -4,16 +4,22 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.ide.CopyPasteManager;
-import com.intellij.psi.*;
+import com.intellij.psi.PsiAnnotation;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiModifierList;
 import com.sount.restful.action.AbstractBaseAction;
 import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.JaxrsRequestAnnotation;
 import com.sount.restful.annotations.SpringControllerAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
 import com.sount.restful.common.PsiMethodHelper;
+import com.sount.utils.RestfulToolkitBundle;
+import org.jetbrains.annotations.NotNull;
 
 import java.awt.datatransfer.StringSelection;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * 生成并复制restful url
@@ -37,16 +43,16 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
         }
 
         CopyPasteManager.getInstance().setContents(new StringSelection(servicePath));
-        showPopupBalloon("复制成功", myEditor);
+        showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), myEditor);
     }
 
     private boolean isJaxrsRestMethod(PsiMethod psiMethod) {
         PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
 
         for (PsiAnnotation annotation : annotations) {
-            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values()).map(sra -> sra.getQualifiedName()).anyMatch(name -> name.equals(annotation.getQualifiedName()));
+            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values()).map(JaxrsHttpMethodAnnotation::getQualifiedName).anyMatch(name -> name.equals(annotation.getQualifiedName()));
             if (match) {
-                return match;
+                return true;
             }
         }
 
@@ -55,14 +61,12 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
 
     /**
      * spring rest 方法被选中才触发
-     *
-     * @param e
      */
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
         PsiMethod psiMethod = findTargetMethod(e);
         boolean visible = psiMethod != null &&
-                (isRestController(psiMethod.getContainingClass()) || isRestfulMethod(psiMethod));
+                (isRestController(Objects.requireNonNull(psiMethod.getContainingClass())) || isRestfulMethod(psiMethod));
         setActionPresentationVisible(e, visible);
     }
 
@@ -70,9 +74,9 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
     private boolean isRestController(PsiClass containingClass) {
         PsiModifierList modifierList = containingClass.getModifierList();
 
-        /*return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ;*/
-
+        if (modifierList == null) {
+            return false;
+        }
         return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
                 modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ||
                 modifierList.findAnnotation(JaxrsRequestAnnotation.PATH.getQualifiedName()) != null;
@@ -82,34 +86,20 @@ public class GenerateUrlAction /*extends RestfulMethodSpringSupportedAction*/ ex
         PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
 
         for (PsiAnnotation annotation : annotations) {
-            boolean match = Arrays.stream(SpringRequestMethodAnnotation.values()).map(sra -> sra.getQualifiedName()).anyMatch(name -> name.equals(annotation.getQualifiedName()));
+            boolean match = Arrays.stream(SpringRequestMethodAnnotation.values()).map(SpringRequestMethodAnnotation::getQualifiedName).anyMatch(name -> name.equals(annotation.getQualifiedName()));
             if (match) {
-                return match;
+                return true;
             }
         }
 
         for (PsiAnnotation annotation : annotations) {
-            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values()).map(sra -> sra.getQualifiedName()).anyMatch(name -> name.equals(annotation.getQualifiedName()));
+            boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values()).map(JaxrsHttpMethodAnnotation::getQualifiedName).anyMatch(name -> name.equals(annotation.getQualifiedName()));
             if (match) {
-                return match;
+                return true;
             }
         }
 
         return false;
     }
-
-
-    // private void showPopupBalloon(final String result) {
-    //     ApplicationManager.getApplication().invokeLater(new Runnable() {
-    //         @Override
-    //         public void run() {
-    //             JBPopupFactory factory = JBPopupFactory.getInstance();
-    //             factory.createHtmlTextBalloonBuilder(result, null, new JBColor(new Color(186, 238, 186), new Color(73, 117, 73)), null)
-    //                     .setFadeoutTime(5000)
-    //                     .createBalloon()
-    //                     .show(factory.guessBestPopupLocation(myEditor), Balloon.Position.above);
-    //         }
-    //     });
-    // }
 
 }

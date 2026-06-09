@@ -19,8 +19,7 @@ public class JsonUtils {
     public static String format(String str) {
         JsonElement parse = JsonParser.parseString(str);
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        String json = gson.toJson(parse);
-        return json;
+        return gson.toJson(parse);
     }
 
     private static boolean isGsonFormat(String targetStr, Class<? extends JsonElement> clazz) {

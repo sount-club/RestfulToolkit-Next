@@ -8,6 +8,7 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.FakePsiElement;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
 
 public class RestServiceItemTest extends BasePlatformTestCase {
 
@@ -64,7 +65,7 @@ public class RestServiceItemTest extends BasePlatformTestCase {
         }
 
         @Override
-        public Project getProject() {
+        public @NonNull Project getProject() {
             return project;
         }
 

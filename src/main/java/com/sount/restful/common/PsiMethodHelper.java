@@ -3,15 +3,7 @@ package com.sount.restful.common;
 
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.PsiAnnotation;
-import com.intellij.psi.PsiAnnotationMemberValue;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiField;
-import com.intellij.psi.PsiLiteralExpression;
-import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiModifierList;
-import com.intellij.psi.PsiParameter;
-import com.intellij.psi.PsiParameterList;
+import com.intellij.psi.*;
 import com.sount.restful.annotations.JaxrsRequestAnnotation;
 import com.sount.restful.annotations.SpringControllerAnnotation;
 import com.sount.restful.common.jaxrs.JaxrsAnnotationHelper;
@@ -21,15 +13,10 @@ import com.sount.restful.method.action.ModuleHelper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import static com.sount.restful.annotations.SpringRequestParamAnnotations.PATH_VARIABLE;
-import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_BODY;
-import static com.sount.restful.annotations.SpringRequestParamAnnotations.REQUEST_PARAM;
 import static com.sount.restful.annotations.SpringControllerAnnotation.REST_CONTROLLER;
+import static com.sount.restful.annotations.SpringRequestParamAnnotations.*;
 
 /**
  * PsiMethod处理类
@@ -38,8 +25,6 @@ public class PsiMethodHelper {
     PsiMethod psiMethod;
     Project myProject;
     Module myModule;
-
-    private String pathSeparator = "/";
 
     public static PsiMethodHelper create(@NotNull PsiMethod psiMethod) {
         return new PsiMethodHelper(psiMethod);
@@ -62,22 +47,20 @@ public class PsiMethodHelper {
 
     /**
      * 构建URL参数 key value
-     *
-     * @return
      */
     public String buildParamString() {
 
 //        boolean matchedGet = matchGetMethod();
         // 没指定method 标示支持所有method
 
-        StringBuilder param = new StringBuilder("");
+        StringBuilder param = new StringBuilder();
         Map<String, Object> baseTypeParamMap = getBaseTypeParameterMap();
 
-        if (baseTypeParamMap != null && baseTypeParamMap.size() > 0) {
+        if (!baseTypeParamMap.isEmpty()) {
             baseTypeParamMap.forEach((s, o) -> param.append(s).append("=").append(o).append("&"));
         }
 
-        return param.length() > 0 ? param.deleteCharAt(param.length() - 1).toString() : "";
+        return !param.isEmpty() ? param.deleteCharAt(param.length() - 1).toString() : "";
     }
 
     /*获取方法中基础类型（primitive和string、date等以及这些类型数组）*/
@@ -89,7 +72,7 @@ public class PsiMethodHelper {
 
         // 拼接参数
         for (Parameter parameter : parameterList) {
-//跳过标注 RequestBody 注解的参数
+            //跳过标注 RequestBody 注解的参数
             if (parameter.isRequestBodyFound()) {
                 continue;
             }
@@ -121,15 +104,6 @@ public class PsiMethodHelper {
                 }
             }
 
-          /*  PsiClass psiClass2 = psiClassHelper.findOnePsiClassByClassName2(parameter.getParamType(), getProject());
-            if (psiClass2 != null) {
-                PsiField[] fields = psiClass2.getFields();
-                for (PsiField field : fields) {
-                    Object fieldDefaultValue  = PsiClassHelper.getJavaBaseTypeDefaultValue(field.getType().getPresentableText());
-                    if(fieldDefaultValue != null)
-                        baseTypeParamMap.put(field.getName(), fieldDefaultValue);
-                }
-            }*/
         }
         return baseTypeParamMap;
     }
@@ -238,8 +212,8 @@ public class PsiMethodHelper {
         String paramName = null;
         PsiAnnotationMemberValue attributeValue = annotation.findDeclaredAttributeValue("value");
 
-        if (attributeValue != null && attributeValue instanceof PsiLiteralExpression) {
-            paramName = (String) ((PsiLiteralExpression) attributeValue).getValue();
+        if (attributeValue instanceof PsiLiteralExpression psiLiteralExpression) {
+            paramName = (String) psiLiteralExpression.getValue();
         }
         return paramName;
     }
@@ -256,8 +230,7 @@ public class PsiMethodHelper {
         Project project = psiMethod.getProject();
         final String className = parameter.getParamType();
 
-        String queryJson = PsiClassHelper.create(psiMethod.getContainingClass()).withModule(myModule).convertClassToJSON(className, project);
-        return queryJson;
+        return PsiClassHelper.create(Objects.requireNonNull(psiMethod.getContainingClass())).withModule().convertClassToJSON(className, project);
     }
 
 
@@ -314,8 +287,7 @@ public class PsiMethodHelper {
         String params = PsiMethodHelper.create(psiMethod).buildParamString();
         // RequestMapping 注解设置了 param
         if (!params.isEmpty()) {
-            StringBuilder urlBuilder = new StringBuilder(serviceUriPath);
-            return urlBuilder.append(serviceUriPath.contains("?") ? "&" : "?").append(params).toString();
+            return serviceUriPath + (serviceUriPath.contains("?") ? "&" : "?") + params;
         }
         return serviceUriPath;
     }
@@ -323,9 +295,6 @@ public class PsiMethodHelper {
     //包含 "RestController" "Controller"
     public static boolean isSpringRestSupported(PsiClass containingClass) {
         PsiModifierList modifierList = containingClass.getModifierList();
-
-        /*return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ;*/
 
         return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
                 modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null;

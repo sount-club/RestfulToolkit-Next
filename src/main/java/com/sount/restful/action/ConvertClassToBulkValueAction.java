@@ -3,10 +3,9 @@ package com.sount.restful.action;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiField;
 import com.sount.restful.common.PsiClassHelper;
-import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.NotNull;
 
 import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;
@@ -15,7 +14,7 @@ import java.util.List;
 
 public class ConvertClassToBulkValueAction extends AbstractBaseAction {
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
         PsiClass psiClass = findTargetClass(e);
 
         if (psiClass == null) {
@@ -51,20 +50,13 @@ public class ConvertClassToBulkValueAction extends AbstractBaseAction {
         final List<PsiClass> psiClassLinkList = getPsiClassLinkList(psiClass);
         List<PsiField> fields = new ArrayList<>();
         for (PsiClass pc : psiClassLinkList) {
-            for (PsiField field : pc.getFields()) {
-                fields.add(field);
-            }
+            Collections.addAll(fields, pc.getFields());
         }
         return fields;
     }
 
-    @Nullable
-    protected PsiClass getPsiClass(PsiElement psiElement) {
-        return psiElement instanceof PsiClass ? (PsiClass) psiElement : null;
-    }
-
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
         setActionPresentationVisible(e, findTargetClass(e) != null);
     }
 }

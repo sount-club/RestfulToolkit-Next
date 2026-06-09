@@ -11,8 +11,8 @@ public enum SpringRequestParamAnnotations {
         this.qualifiedName = qualifiedName;
     }
 
-    private String shortName;
-    private String qualifiedName;
+    private final String shortName;
+    private final String qualifiedName;
 
     public String getQualifiedName() {
         return qualifiedName;

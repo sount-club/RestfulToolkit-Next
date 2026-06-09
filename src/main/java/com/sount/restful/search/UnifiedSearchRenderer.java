@@ -46,8 +46,6 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
     private final SimpleColoredComponent urlComponent = new SimpleColoredComponent();
     private final JLabel bestMatchBadge = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_RENDERER_BEST_MATCH));
 
-    // Line 2 components (description + chips in same line)
-    private final JPanel line2Panel = new JPanel(new BorderLayout());
     private final SimpleColoredComponent descLineComponent = new SimpleColoredComponent();
     private final JPanel chipsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
     private final JLabel moduleChip = new JLabel();
@@ -80,6 +78,8 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
         line1.add(bestMatchBadge, BorderLayout.EAST);
 
         // Line 2: description · Controller#methodName · moduleName + chips
+        // Line 2 components (description + chips in same line)
+        JPanel line2Panel = new JPanel(new BorderLayout());
         line2Panel.setOpaque(false);
         descLineComponent.setOpaque(false);
         Font descFont = UIUtil.getLabelFont();

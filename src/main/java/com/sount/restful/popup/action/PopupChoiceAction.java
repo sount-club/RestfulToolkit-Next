@@ -2,22 +2,20 @@ package com.sount.restful.popup.action;
 
 
 import com.intellij.codeInsight.lookup.LookupManager;
-import com.intellij.openapi.actionSystem.ActionGroup;
-import com.intellij.openapi.actionSystem.ActionManager;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.ListPopup;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * @author Olivier Smedile
  * @version $Id: File Header.java 3 2008-03-11 08:52:55Z osmedile $
  */
 public class PopupChoiceAction extends DumbAwareAction {
-    private ActionGroup actionGroup;
+    private final ActionGroup actionGroup;
 
 
     public PopupChoiceAction() {
@@ -25,7 +23,7 @@ public class PopupChoiceAction extends DumbAwareAction {
     }
 
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
         if (actionGroup == null) {
             return;
         }
@@ -36,7 +34,12 @@ public class PopupChoiceAction extends DumbAwareAction {
     }
 
     @Override
-    public void update(AnActionEvent e) {
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
         super.update(e);
         Editor editor = CommonDataKeys.EDITOR.getData(e.getDataContext());
         if (editor == null) {
@@ -46,7 +49,6 @@ public class PopupChoiceAction extends DumbAwareAction {
         Project project = getEventProject(e);
         if (project != null) {
             e.getPresentation().setEnabled(LookupManager.getInstance(project).getActiveLookup() == null);
-            return;
         }
     }
 }

@@ -210,7 +210,7 @@ public class EndpointIndex implements Disposable {
             }
         })
         .inSmartMode(myProject)
-        .expireWith(myProject)
+        .expireWith(this)
         .finishOnUiThread(ModalityState.defaultModalityState(), items -> {
             long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
 

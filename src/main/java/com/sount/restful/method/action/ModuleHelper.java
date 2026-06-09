@@ -13,12 +13,8 @@ public class ModuleHelper {
     private static final String SCHEME = "http://"; //PROTOCOL
     private static final String HOST = "localhost";
     private static final String PORT = "8080"; // int
-    public static String DEFAULT_URI = "http://localhost"+":"+PORT;
+    public static String DEFAULT_URI = "http://localhost" + ":" + PORT;
 //    private static final String PATH = "http://localhost"+":"+PORT; // PATH or FILE
-
-    public static String getAUTHORITY() {
-        return null;
-    }
 
     PropertiesHandler propertiesHandler;
 
@@ -42,7 +38,7 @@ public class ModuleHelper {
         if (StringUtils.isEmpty(port)) port = PORT;
 
         String contextPath = propertiesHandler.getContextPath();
-        return new StringBuilder(SCHEME).append(HOST).append(":").append(port).append(contextPath).toString();
+        return SCHEME + HOST + ":" + port + contextPath;
     }
 
 }

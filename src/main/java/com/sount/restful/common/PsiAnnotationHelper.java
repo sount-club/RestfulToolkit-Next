@@ -19,12 +19,11 @@ public class PsiAnnotationHelper {
         //只有注解
         //一个值 class com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl
         //多个值  class com.intellij.psi.impl.source.tree.java.PsiArrayInitializerMemberValueImpl
-        if (value instanceof PsiReferenceExpression) {
-            PsiReferenceExpression expression = (PsiReferenceExpression) value;
+        if (value instanceof PsiReferenceExpression expression) {
             values.add(expression.getText());
-        } else if (value instanceof PsiLiteralExpression) {
+        } else if (value instanceof PsiLiteralExpression expression) {
 //            values.add(psiNameValuePair.getLiteralValue());
-            values.add(((PsiLiteralExpression) value).getValue().toString());
+            values.add(expression.getValue().toString());
         } else if (value instanceof PsiArrayInitializerMemberValue) {
             PsiAnnotationMemberValue[] initializers = ((PsiArrayInitializerMemberValue) value).getInitializers();
 

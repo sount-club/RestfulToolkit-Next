@@ -28,10 +28,10 @@ import java.util.Objects;
 //RequestMappingNavigationItem
 public class RestServiceItem implements NavigationItem {
     private PsiMethod psiMethod; //元素
-    private PsiElement psiElement; //元素
+    private final PsiElement psiElement; //元素
     private Module module;
 
-    private String requestMethod; //请求方法 get/post...
+    private final String requestMethod; //请求方法 get/post...
     private HttpMethod method;  //请求方法 get/post...
 
     private String url; //url mapping;
@@ -40,10 +40,10 @@ public class RestServiceItem implements NavigationItem {
     private String cachedLocationText; // pre-computed at construction time (inside read action)
     private String cachedJavadoc;      // pre-computed at construction time
     private String cachedModuleName;   // pre-computed at construction time
-    private String cachedPackageName;  // pre-computed at construction time
-    private String cachedDescription;    // pre-computed at construction time
-    private String cachedControllerName; // pre-computed at construction time
-    private String cachedMethodName;     // pre-computed at construction time
+    private final String cachedPackageName;  // pre-computed at construction time
+    private final String cachedDescription;    // pre-computed at construction time
+    private final String cachedControllerName; // pre-computed at construction time
+    private final String cachedMethodName;     // pre-computed at construction time
     private String cachedSearchableText; // pre-computed at construction time
     private String cachedSearchSelectionKey;
 
@@ -306,8 +306,8 @@ public class RestServiceItem implements NavigationItem {
     }
 
     private String computeJavadoc() {
-        if (psiElement instanceof PsiMethod psiMethod) {
-            PsiElement docComment = psiMethod.getDocComment();
+        if (psiElement instanceof PsiMethod method) {
+            PsiElement docComment = method.getDocComment();
             if (docComment != null) {
                 return docComment.getText();
             }
@@ -321,8 +321,8 @@ public class RestServiceItem implements NavigationItem {
 
     private String computeDescription() {
         // 1. Try annotation-based descriptions
-        if (psiElement instanceof PsiMethod psiMethod) {
-            for (PsiAnnotation annotation : psiMethod.getAnnotations()) {
+        if (psiElement instanceof PsiMethod method) {
+            for (PsiAnnotation annotation : method.getAnnotations()) {
                 String qualifiedName = annotation.getQualifiedName();
                 if (qualifiedName == null) continue;
                 // @ApiOperation("xxx")
@@ -424,7 +424,7 @@ public class RestServiceItem implements NavigationItem {
 
     private static void appendNonEmpty(StringBuilder sb, String value) {
         if (value != null && !value.isEmpty()) {
-            if (sb.length() > 0) sb.append(' ');
+            if (!sb.isEmpty()) sb.append(' ');
             sb.append(value);
         }
     }

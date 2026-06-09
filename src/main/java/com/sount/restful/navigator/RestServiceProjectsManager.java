@@ -35,7 +35,7 @@ import java.util.Map;
 
 @Service(Service.Level.PROJECT)
 @State(name = "RestServiceProjectsManager", storages = {@Storage(StoragePathMacros.WORKSPACE_FILE)})
-public class RestServiceProjectsManager implements PersistentStateComponent<RestServicesNavigatorState>, Disposable {
+public final class RestServiceProjectsManager implements PersistentStateComponent<RestServicesNavigatorState>, Disposable {
     protected final Project myProject;
 
     private RestServicesNavigatorState myState = new RestServicesNavigatorState();
