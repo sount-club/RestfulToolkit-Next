@@ -7,8 +7,6 @@ import com.intellij.openapi.util.text.StringUtil;
  * @author zhaow
  */
 public class JsonUtils {
-    public JsonUtils() {
-    }
 
     public static boolean isValidJson(String json) {
         if (StringUtil.isEmptyOrSpaces(json)) {

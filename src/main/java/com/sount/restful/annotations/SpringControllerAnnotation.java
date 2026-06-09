@@ -22,17 +22,4 @@ public enum SpringControllerAnnotation implements PathMappingAnnotation {
         return shortName;
     }
 
-/*
-    @Override
-    public List<PathMappingAnnotation> getPathMappings() {
-        return allPathMappingAnnotations;
-    }
-*/
-
-/*    static {
-        for (SpringControllerAnnotation springControllerAnnotation : SpringControllerAnnotation.values()) {
-            allPathMappingAnnotations.add(springControllerAnnotation);
-        }
-    }*/
-
 }

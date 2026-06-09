@@ -20,16 +20,5 @@ public enum JaxrsPathAnnotation implements PathMappingAnnotation {
     public String getShortName() {
         return shortName;
     }
-/*
-    @Override
-    public List<PathMappingAnnotation> getPathMappings() {
-        return allPathMappingAnnotations;
-    }
-
-    static {
-        for (JaxrsPathAnnotation annotation : JaxrsPathAnnotation.values()) {
-            allPathMappingAnnotations.add(annotation);
-        }
-    }*/
 
 }

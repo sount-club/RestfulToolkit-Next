@@ -84,7 +84,6 @@
 		 Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
 	<extensions defaultExtensionNs="com.intellij">
 		<projectService serviceImplementation="com.sount.restful.search.EndpointIndex"/>
-		<projectService serviceImplementation="com.sount.restful.search.SearchHistory"/>
 	</extensions>
 
 	<extensions defaultExtensionNs="org.jetbrains.kotlin">

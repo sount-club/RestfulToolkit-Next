@@ -35,12 +35,6 @@ public class RestServiceItem implements NavigationItem {
     private HttpMethod method;  //请求方法 get/post...
 
     private String url; //url mapping;
-/*
-    private String methodName; //方法名称
-
-    private String hostContextPath; // todo 处理 http://
-    private PsiClass psiClass;
-    private boolean foundRequestBody;*/
 
     private Navigatable navigationElement;
     private String cachedLocationText; // pre-computed at construction time (inside read action)
@@ -61,7 +55,6 @@ public class RestServiceItem implements NavigationItem {
     private String cachedLowerDescription;
     private String cachedLowerHttpMethod;
 
-    //        ((KtClass) ((KtClassBody) psiElement.getParent()).getParent()).getModifierList().getAnnotationEntries().get(0).getText()
     public RestServiceItem(PsiElement psiElement, String requestMethod, String urlPath) {
         this.psiElement = psiElement;
         if (psiElement instanceof PsiMethod) {
@@ -221,17 +214,8 @@ public class RestServiceItem implements NavigationItem {
         }
 
         ModuleHelper moduleHelper = ModuleHelper.create(module);
-        // 处理 Mapping 设置个 value
-//        String fullUrl = moduleHelper.buildFullUrl(psiMethod);
-
         return moduleHelper.getServiceHostPrefix() + getUrl();
     }
-
-/*    public String getFullUrlWithParams() {
-        ModuleHelper moduleHelper = ModuleHelper.create(module);
-        String urlWithParams = moduleHelper.buildFullUrlWithParams(psiMethod);
-        return urlWithParams;
-    }*/
 
     public void setModule(Module module) {
         this.module = module;
@@ -240,18 +224,6 @@ public class RestServiceItem implements NavigationItem {
         this.cachedSearchableText = buildSearchableText();
         this.cachedSearchSelectionKey = null;
     }
-
-/*    public String getHostContextPath() {
-        return hostContextPath;
-    }
-
-    public boolean isFoundRequestBody() {
-        return foundRequestBody;
-    }
-
-    public void setFoundRequestBody(boolean foundRequestBody) {
-        this.foundRequestBody = foundRequestBody;
-    }*/
 
     public PsiElement getPsiElement() {
         return psiElement;

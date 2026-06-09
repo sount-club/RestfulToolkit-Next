@@ -168,7 +168,7 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
         assertEquals(0, list.getSelectedIndex());
     }
 
-    public void testSelectAndRevealRepeatsRevealAfterLayout() throws Exception {
+    public void testSelectAndRevealRepeatsRevealAfterLayout() {
         TrackingList list = new TrackingList();
         DefaultListModel<SearchResult> model = (DefaultListModel<SearchResult>) list.getModel();
         model.addElement(new SearchResult(createItem("GET", "/activity/list"), 100, "url"));

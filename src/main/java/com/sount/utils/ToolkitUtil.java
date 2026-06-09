@@ -3,11 +3,8 @@ package com.sount.utils;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
-import com.intellij.psi.*;
-import com.intellij.psi.search.GlobalSearchScope;
 import org.jetbrains.annotations.NotNull;
 
 import java.net.URL;
@@ -15,48 +12,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class ToolkitUtil {
-    public static void runWhenInitialized(final Project project, final Runnable r) {
-
-        if (project.isDisposed()) {
-            return;
-        }
-
-        if (isNoBackgroundMode()) {
-            r.run();
-            return;
-        }
-
-        if (!project.isInitialized()) {
-            DumbService.getInstance(project).runWhenSmart(r);
-            return;
-        }
-        invokeLater(project, r);
-    }
-
-
-    public static void runWhenProjectIsReady(final Project project, final Runnable runnable) {
-        DumbService.getInstance(project).smartInvokeLater(runnable);
-    }
-
 
     public static boolean isNoBackgroundMode() {
         return (ApplicationManager.getApplication().isUnitTestMode()
                 || ApplicationManager.getApplication().isHeadlessEnvironment());
     }
 
-
-    public static void runDumbAware(final Project project, final Runnable r) {
-        if (DumbService.isDumbAware(r)) {
-            r.run();
-        } else {
-            DumbService.getInstance(project).runWhenSmart(() -> {
-                if (!project.isDisposed()) {
-                    r.run();
-                }
-            });
-        }
+    public static void runWhenProjectIsReady(final Project project, final Runnable runnable) {
+        DumbService.getInstance(project).smartInvokeLater(runnable);
     }
-
 
     public static void invokeLater(Runnable r) {
         ApplicationManager.getApplication().invokeLater(r);
@@ -83,46 +47,8 @@ public class ToolkitUtil {
         return "<img src=\"" + url + "\"> ";
     }
 
-
-    public static PsiClass findPsiClass(final String qualifiedName, final Module module, final Project project) {
-        final GlobalSearchScope scope = module == null ? GlobalSearchScope.projectScope(project) : GlobalSearchScope.moduleWithDependenciesScope(module);
-        return JavaPsiFacade.getInstance(project).findClass(qualifiedName, scope);
-    }
-
-    public static PsiPackage getContainingPackage(@NotNull PsiClass psiClass) {
-        PsiDirectory directory = psiClass.getContainingFile().getContainingDirectory();
-        return directory == null ? null : JavaDirectoryService.getInstance().getPackage(directory);
-    }
-
     public static void runWriteAction(@NotNull Runnable action) {
         ApplicationManager.getApplication().runWriteAction(action);
-    }
-
-
-    @NotNull
-    public static String removeRedundancyMarkup(String pattern) {
-        String localhostRegex = "(http(s?)://)?(localhost)(:\\d+)?";
-        String hostAndPortRegex = "(http(s?)://)?" +
-                "( " +
-                "([a-zA-Z0-9]([a-zA-Z0-9\\\\-]{0,61}[a-zA-Z0-9])?\\\\.)+[a-zA-Z]{2,6} |" +  // domain
-                "((2[0-4]\\d|25[0-5]|[01]?\\d\\d?)\\.){3}(2[0-4]\\d|25[0-5]|[01]?\\d\\d?)" + // ip address
-                ")";
-
-        String localhost = "localhost";
-        if (pattern.contains(localhost)) {
-            pattern = pattern.replaceFirst(localhostRegex, "");
-        }
-        // quick test if reg exp should be used
-        if (pattern.contains("http:") || pattern.contains("https:")) {
-            pattern = pattern.replaceFirst(hostAndPortRegex, "");
-        }
-
-        //TODO : resolve RequestMapping(params="method=someMethod")
-        if (!pattern.contains("?")) {
-            return pattern;
-        }
-        pattern = pattern.substring(0, pattern.indexOf("?"));
-        return pattern;
     }
 
 

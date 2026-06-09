@@ -9,6 +9,7 @@ import java.util.Map;
 import javax.swing.*;
 
 import com.google.gson.*;
+import com.intellij.openapi.components.Service;
 import com.intellij.openapi.editor.colors.FontPreferences;
 import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.progress.*;
@@ -30,10 +31,8 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.fife.ui.rtextarea.RTextScrollPane;
 import org.jetbrains.annotations.NotNull;
 
-//import com.intellij.openapi.editor.colors.impl.AppEditorFontOptions;
-//import com.intellij.ui.components.JBPanelWithEmptyText;
-
-public class RestServiceDetail extends JBPanel/*WithEmptyText*/ {
+@Service(Service.Level.PROJECT)
+public final class RestServiceDetail extends JBPanel<RestServiceDetail> {
 
 	public JTextField urlField;
 	public JPanel urlPanel;
@@ -145,7 +144,7 @@ public class RestServiceDetail extends JBPanel/*WithEmptyText*/ {
 		requestModeHintLabel = new JLabel();
 		requestModeHintLabel.setForeground(JBColor.GRAY);
 
-		JPanel summaryPanel = new JBPanel();
+		JBPanel<?> summaryPanel = new JBPanel<>();
 		summaryPanel.setOpaque(false);
 		summaryPanel.setLayout(new BoxLayout(summaryPanel, BoxLayout.Y_AXIS));
 		summaryPanel.add(endpointSummaryLabel);
@@ -180,7 +179,7 @@ public class RestServiceDetail extends JBPanel/*WithEmptyText*/ {
 
 		JPanel footerPanel = new JBPanel(new BorderLayout(JBUI.scale(8), 0));
 		footerPanel.setOpaque(false);
-		JPanel infoPanel = new JBPanel();
+		JBPanel<?> infoPanel = new JBPanel<>();
 		infoPanel.setOpaque(false);
 		infoPanel.setLayout(new BoxLayout(infoPanel, BoxLayout.Y_AXIS));
 		infoPanel.add(responseMetaLabel);
@@ -376,7 +375,7 @@ public class RestServiceDetail extends JBPanel/*WithEmptyText*/ {
 	}
 
 	@NotNull
-	private final FontPreferences getFontPreferences() {
+	private FontPreferences getFontPreferences() {
 		return new FontPreferences();
 	}
 

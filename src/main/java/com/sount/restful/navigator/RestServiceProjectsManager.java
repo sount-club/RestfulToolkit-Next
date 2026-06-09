@@ -17,6 +17,7 @@ package com.sount.restful.navigator;
 
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.Service;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.components.StoragePathMacros;
@@ -32,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Service(Service.Level.PROJECT)
 @State(name = "RestServiceProjectsManager", storages = {@Storage(StoragePathMacros.WORKSPACE_FILE)})
 public class RestServiceProjectsManager implements PersistentStateComponent<RestServicesNavigatorState>, Disposable {
     protected final Project myProject;

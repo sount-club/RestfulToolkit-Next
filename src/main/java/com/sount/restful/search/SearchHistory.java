@@ -15,7 +15,7 @@ import java.util.*;
 
 @Service(Service.Level.PROJECT)
 @State(name = "RestServiceSearchHistory", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
-public class SearchHistory implements PersistentStateComponent<SearchHistory.State> {
+public final class SearchHistory implements PersistentStateComponent<SearchHistory.State> {
 
     private static final Logger LOG = Logger.getInstance(SearchHistory.class);
     private static final Map<Project, SearchHistory> FALLBACK_INSTANCES =
@@ -72,7 +72,7 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
     public void recordQuery(@NotNull String query) {
         if (query.isBlank()) return;
         myState.recentQueries.remove(query);
-        myState.recentQueries.add(0, query);
+        myState.recentQueries.addFirst(query);
         if (myState.recentQueries.size() > 50) {
             myState.recentQueries = new ArrayList<>(myState.recentQueries.subList(0, 50));
         }
@@ -124,15 +124,6 @@ public class SearchHistory implements PersistentStateComponent<SearchHistory.Sta
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.scrollYByQuery.get(normalizedQuery);
-    }
-
-    public void toggleFavorite(@NotNull RestServiceItem item) {
-        String key = item.getEndpointKey();
-        if (myState.favoriteEndpoints.contains(key)) {
-            myState.favoriteEndpoints.remove(key);
-        } else {
-            myState.favoriteEndpoints.add(key);
-        }
     }
 
     public boolean isFavorite(@NotNull RestServiceItem item) {

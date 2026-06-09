@@ -3,10 +3,8 @@ package com.sount.restful.navigator;
 
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionManager;
-import com.intellij.openapi.actionSystem.ActionToolbar;
 import com.intellij.openapi.actionSystem.DataSink;
 import com.intellij.openapi.actionSystem.UiDataProvider;
-import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.openapi.ui.Splitter;
@@ -22,7 +20,6 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -44,13 +41,6 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
         myProject = project;
         myTree = tree;
         myRestServiceDetail = project.getService(RestServiceDetail.class);
-
-        final ActionManager actionManager = ActionManager.getInstance();
-        ActionToolbar actionToolbar = actionManager.createActionToolbar("RestToolkit Navigator Toolbar",
-                (DefaultActionGroup) actionManager
-                        .getAction("Toolkit.NavigatorActionsToolbar"),
-                true);
-        setToolbar(actionToolbar.getComponent());
 
         myTree.setBorder(JBUI.Borders.empty());
         JScrollPane scrollPane = ScrollPaneFactory.createScrollPane(myTree);
@@ -99,6 +89,7 @@ public class RestServicesNavigatorPanel extends SimpleToolWindowPanel implements
         setContent(contentPanel);
 
         // popup
+        final ActionManager actionManager = ActionManager.getInstance();
         myTree.addMouseListener(new PopupHandler() {
             @Override
             public void invokePopup(final Component comp, final int x, final int y) {
