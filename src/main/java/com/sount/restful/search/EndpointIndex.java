@@ -16,7 +16,7 @@ import com.intellij.psi.PsiTreeChangeListener;
 import com.intellij.util.Alarm;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.common.resolver.BaseServiceResolver;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;

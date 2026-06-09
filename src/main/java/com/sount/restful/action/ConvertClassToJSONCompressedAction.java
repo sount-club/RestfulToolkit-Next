@@ -9,10 +9,14 @@ import com.sount.restful.common.PsiClassHelper;
 
 import java.awt.datatransfer.StringSelection;
 
+/**
+ * 将 Java / Kotlin 类转换为压缩 JSON（无换行和缩进）并复制到剪贴板。
+ * <p>
+ * 右键菜单 → "Convert to JSON (Compressed)"
+ */
 public class ConvertClassToJSONCompressedAction extends ConvertClassToJSONAction {
     @Override
     public void actionPerformed(AnActionEvent e) {
-
         PsiElement psiElement = e.getData(CommonDataKeys.PSI_ELEMENT);
         PsiClass psiClass = getPsiClass(psiElement);
         if (psiClass == null) return;

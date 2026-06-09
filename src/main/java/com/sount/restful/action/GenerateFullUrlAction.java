@@ -1,4 +1,4 @@
-package com.sount.restful.method.action;
+package com.sount.restful.action;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
@@ -7,17 +7,17 @@ import com.intellij.openapi.ide.CopyPasteManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.psi.PsiMethod;
 import com.sount.restful.common.PsiMethodHelper;
-import com.sount.utils.RestfulToolkitBundle;
+import com.sount.restful.utils.RestfulToolkitBundle;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.datatransfer.StringSelection;
 
 /**
- * 生成并复制restful url
- * tood: 没考虑RequestMapping 多个值的情况
+ * 生成并复制完整 REST URL（含 host、port、context-path 和查询参数）。
+ * <p>
+ * 右键菜单 → "Generate && Copy Full URL"
  */
-public class
-GenerateFullUrlAction extends SpringAnnotatedMethodAction {
+public class GenerateFullUrlAction extends SpringAnnotatedMethodAction {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
@@ -33,7 +33,5 @@ GenerateFullUrlAction extends SpringAnnotatedMethodAction {
         if (myEditor != null) {
             showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), myEditor);
         }
-
     }
-
 }

@@ -1,4 +1,4 @@
-package com.sount.restful.navigation.action;
+package com.sount.restful.navigation;
 
 import com.intellij.ide.util.EditSourceUtil;
 import com.intellij.navigation.ItemPresentation;
@@ -16,7 +16,8 @@ import com.intellij.util.text.matching.MatchingMode;
 import com.sount.restful.common.PsiAnnotationHelper;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
-import com.sount.restful.method.action.ModuleHelper;
+import com.sount.restful.method.ModuleHelper;
+import com.sount.restful.search.EndpointDescriptor;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.psi.KtClass;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
@@ -44,16 +45,8 @@ public class RestServiceItem implements NavigationItem {
     private final String cachedDescription;    // pre-computed at construction time
     private final String cachedControllerName; // pre-computed at construction time
     private final String cachedMethodName;     // pre-computed at construction time
-    private String cachedSearchableText; // pre-computed at construction time
     private String cachedSearchSelectionKey;
-
-    // Lowercase caches for search scoring (avoid repeated lower() calls)
-    private String cachedLowerUrl;
-    private String cachedLowerMethodName;
-    private String cachedLowerModuleName;
-    private String cachedLowerControllerName;
-    private String cachedLowerDescription;
-    private String cachedLowerHttpMethod;
+    private EndpointDescriptor descriptor;
 
     public RestServiceItem(PsiElement psiElement, String requestMethod, String urlPath) {
         this.psiElement = psiElement;
@@ -76,8 +69,7 @@ public class RestServiceItem implements NavigationItem {
         this.cachedControllerName = computeControllerName();
         this.cachedMethodName = computeMethodName();
         this.cachedDescription = computeDescription();
-        preComputeLowerCaches();
-        this.cachedSearchableText = buildSearchableText();
+        rebuildDescriptor();
     }
 
     @Nullable
@@ -192,8 +184,7 @@ public class RestServiceItem implements NavigationItem {
 
     public void setMethod(HttpMethod method) {
         this.method = method;
-        this.cachedLowerHttpMethod = toLower(getMethodText());
-        this.cachedSearchableText = buildSearchableText();
+        rebuildDescriptor();
         this.cachedSearchSelectionKey = null;
     }
 
@@ -203,8 +194,7 @@ public class RestServiceItem implements NavigationItem {
 
     public void setUrl(String url) {
         this.url = url;
-        this.cachedLowerUrl = toLower(url);
-        this.cachedSearchableText = buildSearchableText();
+        rebuildDescriptor();
         this.cachedSearchSelectionKey = null;
     }
 
@@ -220,8 +210,7 @@ public class RestServiceItem implements NavigationItem {
     public void setModule(Module module) {
         this.module = module;
         this.cachedModuleName = module != null ? module.getName() : "";
-        this.cachedLowerModuleName = toLower(cachedModuleName);
-        this.cachedSearchableText = buildSearchableText();
+        rebuildDescriptor();
         this.cachedSearchSelectionKey = null;
     }
 
@@ -236,7 +225,7 @@ public class RestServiceItem implements NavigationItem {
     public String getModuleName() {
         if (cachedModuleName != null) return cachedModuleName;
         cachedModuleName = module != null ? module.getName() : "";
-        cachedLowerModuleName = toLower(cachedModuleName);
+        rebuildDescriptor();
         return cachedModuleName;
     }
 
@@ -263,19 +252,18 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getEndpointKey() {
-        String methodText = getMethodText();
-        return (methodText != null ? methodText : "UNKNOWN") + ":" + (url != null ? url : "");
+        return descriptor.endpointKey();
     }
 
     public String getSearchSelectionKey() {
         if (cachedSearchSelectionKey == null) {
-            cachedSearchSelectionKey = getEndpointKey() + ":" + getLocationText() + ":" + getModuleName();
+            cachedSearchSelectionKey = descriptor.searchSelectionKey();
         }
         return cachedSearchSelectionKey;
     }
 
     public String getPackageName() {
-        return cachedPackageName;
+        return descriptor.packageName() != null ? descriptor.packageName() : "";
     }
 
     private String computePackageName() {
@@ -316,7 +304,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getDescription() {
-        return cachedDescription != null ? cachedDescription : "";
+        return descriptor.description() != null ? descriptor.description() : "";
     }
 
     private String computeDescription() {
@@ -350,7 +338,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getControllerName() {
-        return cachedControllerName != null ? cachedControllerName : "";
+        return descriptor.controllerName() != null ? descriptor.controllerName() : "";
     }
 
     private String computeControllerName() {
@@ -367,7 +355,7 @@ public class RestServiceItem implements NavigationItem {
     }
 
     public String getMethodName() {
-        return cachedMethodName != null ? cachedMethodName : "";
+        return descriptor.methodName() != null ? descriptor.methodName() : "";
     }
 
     private String computeMethodName() {
@@ -385,48 +373,33 @@ public class RestServiceItem implements NavigationItem {
      * Pre-computed at construction time for fast repeated search scoring.
      */
     public String getSearchableText() {
-        return cachedSearchableText != null ? cachedSearchableText : "";
+        return descriptor.searchableText();
     }
 
     // --- Lowercase cache accessors for SearchEngine ---
 
-    public String getLowerUrl() { return cachedLowerUrl != null ? cachedLowerUrl : ""; }
-    public String getLowerMethodName() { return cachedLowerMethodName != null ? cachedLowerMethodName : ""; }
-    public String getLowerModuleName() { return cachedLowerModuleName != null ? cachedLowerModuleName : ""; }
-    public String getLowerControllerName() { return cachedLowerControllerName != null ? cachedLowerControllerName : ""; }
-    public String getLowerDescription() { return cachedLowerDescription != null ? cachedLowerDescription : ""; }
-    public String getLowerHttpMethod() { return cachedLowerHttpMethod != null ? cachedLowerHttpMethod : ""; }
+    public String getLowerUrl() { return descriptor.lowerUrl(); }
+    public String getLowerMethodName() { return descriptor.lowerMethodName(); }
+    public String getLowerModuleName() { return descriptor.lowerModuleName(); }
+    public String getLowerControllerName() { return descriptor.lowerControllerName(); }
+    public String getLowerDescription() { return descriptor.lowerDescription(); }
+    public String getLowerHttpMethod() { return descriptor.lowerMethodText(); }
 
-    private void preComputeLowerCaches() {
-        cachedLowerUrl = toLower(url);
-        cachedLowerMethodName = toLower(cachedMethodName);
-        cachedLowerModuleName = toLower(getModuleName());
-        cachedLowerControllerName = toLower(cachedControllerName);
-        cachedLowerDescription = toLower(cachedDescription);
-        cachedLowerHttpMethod = toLower(getMethodText());
+    public EndpointDescriptor getDescriptor() {
+        return descriptor;
     }
 
-    private static String toLower(@Nullable String s) {
-        return s != null ? s.toLowerCase(Locale.ROOT) : "";
-    }
-
-    private String buildSearchableText() {
-        // Reuse pre-computed lowercase caches to avoid redundant toLowerCase() calls
-        StringBuilder sb = new StringBuilder(128);
-        appendNonEmpty(sb, cachedLowerHttpMethod);
-        appendNonEmpty(sb, cachedLowerUrl);
-        appendNonEmpty(sb, cachedLowerDescription);
-        appendNonEmpty(sb, cachedLowerControllerName);
-        appendNonEmpty(sb, cachedLowerMethodName);
-        appendNonEmpty(sb, cachedLowerModuleName);
-        return sb.toString();
-    }
-
-    private static void appendNonEmpty(StringBuilder sb, String value) {
-        if (value != null && !value.isEmpty()) {
-            if (!sb.isEmpty()) sb.append(' ');
-            sb.append(value);
-        }
+    private void rebuildDescriptor() {
+        descriptor = new EndpointDescriptor(
+                method,
+                requestMethod,
+                url,
+                cachedControllerName,
+                cachedMethodName,
+                cachedPackageName,
+                cachedDescription,
+                cachedModuleName
+        );
     }
 
     @Override

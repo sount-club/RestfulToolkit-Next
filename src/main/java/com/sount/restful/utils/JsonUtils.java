@@ -1,4 +1,4 @@
-package com.sount.utils;
+package com.sount.restful.utils;
 
 import com.google.gson.*;
 import com.intellij.openapi.util.text.StringUtil;

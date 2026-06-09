@@ -1,11 +1,10 @@
-package com.sount.restful.method.action;
+package com.sount.restful.action;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifierList;
-import com.sount.restful.action.AbstractBaseAction;
 import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
 import com.sount.restful.common.PsiMethodHelper;
@@ -15,15 +14,13 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Restful method （restful 方法添加方法 ）
+ * 方法级别 REST Action 的基类。
+ * <p>
+ * 仅在当前光标位于 Spring MVC / JAX-RS 注解方法上时才可见，
+ * 用于 Generate URL、Generate QueryParam 等方法级操作。
  */
 public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
 
-    /**
-     * spring rest 方法被选中才触发
-     *
-     * @param e
-     */
     @Override
     public void update(@NotNull AnActionEvent e) {
         PsiMethod psiMethod = findTargetMethod(e);
@@ -32,7 +29,6 @@ public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
         setActionPresentationVisible(e, visible);
     }
 
-    //包含 "RestController" "Controller"
     private boolean isRestController(PsiClass containingClass) {
         if (containingClass == null || containingClass.getModifierList() == null) {
             return false;
@@ -60,6 +56,4 @@ public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
 
         return PsiMethodHelper.isJaxrsRestSupported(Objects.requireNonNull(psiMethod.getContainingClass()));
     }
-
-
 }

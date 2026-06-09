@@ -16,24 +16,26 @@ import com.intellij.ui.components.JBList;
 import com.intellij.util.Alarm;
 import com.intellij.util.ui.JBUI;
 import com.sount.restful.method.HttpMethod;
-import com.sount.restful.navigation.action.RestServiceItem;
-import com.sount.utils.RestfulToolkitBundle;
-import com.sount.utils.RestfulToolkitBundle.Keys;
+import com.sount.restful.navigation.RestServiceItem;
+import com.sount.restful.utils.RestfulToolkitBundle;
+import com.sount.restful.utils.RestfulToolkitBundle.Keys;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import java.awt.*;
-import java.awt.datatransfer.StringSelection;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.*;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
-import java.util.function.ToLongFunction;
 
+/**
+ * Entry point for the unified REST endpoint search popup.
+ * Delegates search logic to {@link SearchController} and
+ * user interaction actions to {@link SearchPopupActions}.
+ */
 public final class UnifiedSearchPopup {
 
     private static final int SEARCH_DEBOUNCE_MS = 150;
@@ -53,7 +55,7 @@ public final class UnifiedSearchPopup {
         SearchHistory history = SearchHistory.getInstance(project);
         PropertiesComponent props = PropertiesComponent.getInstance(project);
 
-        String initialSearchText = resolveInitialSearchText(initialText, history.getRecentQueries());
+        String initialSearchText = SearchPopupModel.resolveInitialSearchText(initialText, history.getRecentQueries());
         SearchTextField searchField = new SearchTextField(false);
         if (!initialSearchText.isEmpty()) {
             searchField.setText(initialSearchText);
@@ -65,10 +67,133 @@ public final class UnifiedSearchPopup {
         resultList.setCellRenderer(renderer);
         resultList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        // Full-width result list scroll pane
         JScrollPane resultScrollPane = ScrollPaneFactory.createScrollPane(resultList);
         resultScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 
+        PopupComponents components = buildMainPanel(searchField, resultList, resultScrollPane,
+                index, currentModule, props);
+
+        Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+
+        Runnable runSearch = () -> {
+            String text = searchField.getText();
+            HttpMethod methodFilter = SearchController.resolveSelectedMethod(
+                    components.methodGroup, components.methodButtons);
+            Module filterModule = SearchController.resolveSelectedModule(
+                    components.moduleCombo, currentModule, index.getItems());
+            SearchController.performSearch(text, index, listModel, resultList,
+                    components.statusLabel, components.searchAllModulesBtn,
+                    filterModule, renderer, methodFilter,
+                    history.getSelectedEndpointKey(text),
+                    history.getSelectedIndex(text),
+                    history.getFirstVisibleIndex(text),
+                    history.getScrollY(text));
+        };
+        Runnable doSearch = () -> {
+            history.recordQuery(searchField.getText());
+            runSearch.run();
+        };
+
+        JBPopup popup = JBPopupFactory.getInstance()
+                .createComponentPopupBuilder(components.mainPanel, searchField.getTextEditor())
+                .setTitle(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_TITLE))
+                .setMovable(true)
+                .setResizable(true)
+                .setRequestFocus(true)
+                .setCancelOnWindowDeactivation(true)
+                .setMinSize(JBUI.size(600, 350))
+                .createPopup();
+
+        Runnable indexListener = () -> SwingUtilities.invokeLater(() -> {
+            SearchController.refreshModuleFilter(components.moduleCombo, index.getItems(),
+                    currentModule, components.moduleCombo.getSelectedItem());
+            runSearch.run();
+        });
+        index.addListener(indexListener);
+
+        popup.addListener(new JBPopupListener() {
+            @Override
+            public void beforeShown(@NotNull LightweightWindowEvent event) {
+            }
+
+            @Override
+            public void onClosed(@NotNull LightweightWindowEvent event) {
+                searchAlarm.cancelAllRequests();
+                index.removeListener(indexListener);
+                SearchPopupActions.recordWindowState(history, searchField.getText(), resultList);
+                Object selected = components.moduleCombo.getSelectedItem();
+                props.setValue(SELECTED_MODULE_KEY, selected != null ? selected.toString() : null);
+            }
+        });
+
+        searchField.addDocumentListener(new DocumentAdapter() {
+            @Override
+            protected void textChanged(@NotNull DocumentEvent e) {
+                searchAlarm.cancelAllRequests();
+                searchAlarm.addRequest(doSearch, SEARCH_DEBOUNCE_MS);
+            }
+        });
+
+        // Method filter buttons trigger re-search
+        for (AbstractButton btn : Collections.list(components.methodGroup.getElements())) {
+            btn.addActionListener(e -> {
+                searchAlarm.cancelAllRequests();
+                searchAlarm.addRequest(doSearch, 0);
+            });
+        }
+
+        // Module combo triggers re-search
+        components.moduleCombo.addActionListener(e -> {
+            searchAlarm.cancelAllRequests();
+            searchAlarm.addRequest(doSearch, 0);
+        });
+
+        // Selection listener for summary bar
+        resultList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                SearchResult selected = resultList.getSelectedValue();
+                if (selected != null) {
+                    history.recordSelectedEndpoint(searchField.getText(), selected.item());
+                    SearchPopupActions.recordWindowState(history, searchField.getText(), resultList);
+                    SearchPopupActions.updateSelectionSummary(components.selectionLabel, selected.item());
+                } else {
+                    components.selectionLabel.setText(" ");
+                }
+            }
+        });
+
+        // Keyboard & mouse events
+        SearchPopupActions.installResultListKeyAdapter(resultList, popup, history);
+        resultList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    SearchPopupActions.navigateToSelected(resultList, popup, history);
+                }
+            }
+        });
+        SearchPopupActions.installSearchFieldNavigation(searchField, resultList);
+        SearchPopupActions.installSearchFieldKeyAdapter(searchField, resultList, popup, history);
+
+        showPopup(project, popup);
+
+        // Initial search
+        SearchController.refreshModuleFilter(components.moduleCombo, index.getItems(),
+                currentModule, components.moduleCombo.getSelectedItem());
+        runSearch.run();
+
+        IdeFocusManager.getInstance(project).requestFocus(searchField.getTextEditor(), true);
+        searchField.getTextEditor().selectAll();
+    }
+
+    // --- Panel construction ---
+
+    private static PopupComponents buildMainPanel(@NotNull SearchTextField searchField,
+                                                  @NotNull JBList<SearchResult> resultList,
+                                                  @NotNull JScrollPane resultScrollPane,
+                                                  @NotNull EndpointIndex index,
+                                                  @Nullable Module currentModule,
+                                                  @NotNull PropertiesComponent props) {
         JPanel mainPanel = new JPanel(new BorderLayout());
         mainPanel.setPreferredSize(JBUI.size(POPUP_WIDTH, POPUP_HEIGHT));
 
@@ -85,14 +210,14 @@ public final class UnifiedSearchPopup {
         methodFilterPanel.setBorder(JBUI.Borders.empty(0, 4));
         ButtonGroup methodGroup = new ButtonGroup();
         EnumMap<HttpMethod, JToggleButton> methodButtons = new EnumMap<>(HttpMethod.class);
-
-        JToggleButton allBtn = createFilterButton(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_FILTER_ALL), methodGroup, methodFilterPanel);
+        JToggleButton allBtn = SearchPopupActions.createFilterButton(
+                RestfulToolkitBundle.message(Keys.SEARCH_POPUP_FILTER_ALL), methodGroup, methodFilterPanel);
         allBtn.setSelected(true);
         for (HttpMethod m : new HttpMethod[]{HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.PATCH}) {
-            methodButtons.put(m, createFilterButton(m.name(), methodGroup, methodFilterPanel));
+            methodButtons.put(m, SearchPopupActions.createFilterButton(m.name(), methodGroup, methodFilterPanel));
         }
 
-        // Module filter dropdown (includes "Current Module: xxx" when available)
+        // Module filter dropdown
         JPanel moduleFilterPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         moduleFilterPanel.setOpaque(false);
         JLabel moduleLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_LABEL) + " ");
@@ -100,9 +225,8 @@ public final class UnifiedSearchPopup {
         moduleFilterPanel.add(moduleLabel);
         JComboBox<String> moduleCombo = new JComboBox<>();
         moduleCombo.setFont(moduleCombo.getFont().deriveFont(Font.PLAIN, moduleCombo.getFont().getSize() - 1f));
-        // Restore persisted selection
         String savedModule = props.getValue(SELECTED_MODULE_KEY);
-        refreshModuleFilter(moduleCombo, index.getItems(), currentModule, savedModule);
+        SearchController.refreshModuleFilter(moduleCombo, index.getItems(), currentModule, savedModule);
         moduleFilterPanel.add(moduleCombo);
 
         JLabel hintLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_KEYBOARD_HINT));
@@ -112,7 +236,7 @@ public final class UnifiedSearchPopup {
         hintPanel.setOpaque(false);
         hintPanel.add(hintLabel);
 
-        // Filter bar: method buttons + module dropdown
+        // Filter bar
         JPanel filterBar = new JPanel(new BorderLayout());
         filterBar.setOpaque(false);
         filterBar.add(methodFilterPanel, BorderLayout.WEST);
@@ -123,10 +247,9 @@ public final class UnifiedSearchPopup {
         topPanel.add(filterBar, BorderLayout.CENTER);
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // Full-width results in center
         mainPanel.add(resultScrollPane, BorderLayout.CENTER);
 
-        // Status bar at bottom
+        // Status bar
         JLabel statusLabel = new JLabel(" ");
         statusLabel.setFont(statusLabel.getFont().deriveFont(Font.PLAIN, statusLabel.getFont().getSize() - 2f));
         statusLabel.setForeground(JBColor.GRAY);
@@ -135,9 +258,7 @@ public final class UnifiedSearchPopup {
         searchAllModulesBtn.setFont(searchAllModulesBtn.getFont().deriveFont(Font.PLAIN, searchAllModulesBtn.getFont().getSize() - 2f));
         searchAllModulesBtn.setMargin(JBUI.insets(2, 8, 2, 8));
         searchAllModulesBtn.setVisible(false);
-        searchAllModulesBtn.addActionListener(e -> {
-            moduleCombo.setSelectedIndex(0);
-        });
+        searchAllModulesBtn.addActionListener(e -> moduleCombo.setSelectedIndex(0));
 
         JPanel statusBar = new JPanel(new BorderLayout());
         statusBar.setOpaque(false);
@@ -155,144 +276,27 @@ public final class UnifiedSearchPopup {
         selectionBar.add(selectionLabel, BorderLayout.WEST);
         selectionBar.add(hintPanel, BorderLayout.EAST);
 
-        // Bottom panel combining status and selection
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.add(statusBar, BorderLayout.NORTH);
         bottomPanel.add(selectionBar, BorderLayout.SOUTH);
         mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
-        // Search debounce
-        Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+        return new PopupComponents(mainPanel, methodGroup, methodButtons, moduleCombo,
+                statusLabel, selectionLabel, searchAllModulesBtn);
+    }
 
-        // Resolve the active method filter from button group
-        Runnable runSearch = () -> {
-            String text = searchField.getText();
-            HttpMethod methodFilter = resolveSelectedMethod(methodGroup, methodButtons);
-            Module filterModule = resolveSelectedModule(moduleCombo, currentModule, index.getItems());
-            performSearch(text, index, listModel, resultList, statusLabel, searchAllModulesBtn,
-                    filterModule, renderer, methodFilter, history.getSelectedEndpointKey(text),
-                    history.getSelectedIndex(text), history.getFirstVisibleIndex(text), history.getScrollY(text));
-        };
-        Runnable doSearch = () -> {
-            history.recordQuery(searchField.getText());
-            runSearch.run();
-        };
+    private record PopupComponents(
+            @NotNull JPanel mainPanel,
+            @NotNull ButtonGroup methodGroup,
+            @NotNull EnumMap<HttpMethod, JToggleButton> methodButtons,
+            @NotNull JComboBox<String> moduleCombo,
+            @NotNull JLabel statusLabel,
+            @NotNull JLabel selectionLabel,
+            @NotNull JButton searchAllModulesBtn
+    ) {
+    }
 
-        JBPopup popup = JBPopupFactory.getInstance()
-                .createComponentPopupBuilder(mainPanel, searchField.getTextEditor())
-                .setTitle(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_TITLE))
-                .setMovable(true)
-                .setResizable(true)
-                .setRequestFocus(true)
-                .setCancelOnWindowDeactivation(true)
-                .setMinSize(JBUI.size(600, 350))
-                .createPopup();
-
-        Runnable indexListener = () -> SwingUtilities.invokeLater(() -> {
-            refreshModuleFilter(moduleCombo, index.getItems(), currentModule, moduleCombo.getSelectedItem());
-            runSearch.run();
-        });
-        index.addListener(indexListener);
-
-        popup.addListener(new JBPopupListener() {
-            @Override
-            public void beforeShown(@NotNull LightweightWindowEvent event) {
-            }
-
-            @Override
-            public void onClosed(@NotNull LightweightWindowEvent event) {
-                searchAlarm.cancelAllRequests();
-                index.removeListener(indexListener);
-                recordWindowState(history, searchField.getText(), resultList);
-                // Persist selected module
-                Object selected = moduleCombo.getSelectedItem();
-                props.setValue(SELECTED_MODULE_KEY, selected != null ? selected.toString() : null);
-            }
-        });
-
-        searchField.addDocumentListener(new DocumentAdapter() {
-            @Override
-            protected void textChanged(@NotNull DocumentEvent e) {
-                searchAlarm.cancelAllRequests();
-                searchAlarm.addRequest(doSearch, SEARCH_DEBOUNCE_MS);
-            }
-        });
-
-        // Method filter buttons trigger re-search
-        for (AbstractButton btn : Collections.list(methodGroup.getElements())) {
-            btn.addActionListener(e -> {
-                searchAlarm.cancelAllRequests();
-                searchAlarm.addRequest(doSearch, 0);
-            });
-        }
-
-        // Module combo triggers re-search
-        moduleCombo.addActionListener(e -> {
-            searchAlarm.cancelAllRequests();
-            searchAlarm.addRequest(doSearch, 0);
-        });
-
-        // Selection listener for summary bar
-        resultList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                SearchResult selected = resultList.getSelectedValue();
-                if (selected != null) {
-                    history.recordSelectedEndpoint(searchField.getText(), selected.item());
-                    recordWindowState(history, searchField.getText(), resultList);
-                    updateSelectionSummary(selectionLabel, selected.item());
-                } else {
-                    selectionLabel.setText(" ");
-                }
-            }
-        });
-
-        // Keyboard shortcuts on the result list
-        resultList.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    e.consume();
-                    navigateToSelected(resultList, popup, history);
-                } else if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
-                    e.consume();
-                    copySelectedPath(resultList);
-                }
-            }
-        });
-
-        // Double-click navigates
-        resultList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    navigateToSelected(resultList, popup, history);
-                }
-            }
-        });
-
-        // Search field keyboard
-        installSearchFieldNavigation(searchField, resultList);
-        searchField.addKeyboardListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
-                    popup.cancel();
-                } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    e.consume();
-                    navigateToSelected(resultList, popup, history);
-                } else if (e.getKeyCode() == KeyEvent.VK_UP) {
-                    e.consume();
-                    moveSelectionFromSearchField(resultList, -1);
-                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
-                    e.consume();
-                    moveSelectionFromSearchField(resultList, 1);
-                } else if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
-                    e.consume();
-                    copySelectedPath(resultList);
-                }
-            }
-        });
-
+    private static void showPopup(@NotNull Project project, @NotNull JBPopup popup) {
         Component focusOwner = IdeFocusManager.getInstance(project).getFocusOwner();
         if (focusOwner != null) {
             Window window = SwingUtilities.getWindowAncestor(focusOwner);
@@ -304,432 +308,67 @@ public final class UnifiedSearchPopup {
         } else {
             popup.showInFocusCenter();
         }
-
-        // Initial search. Refresh module options again to cover the race where
-        // the async endpoint index completes while the popup is still being built.
-        refreshModuleFilter(moduleCombo, index.getItems(), currentModule, moduleCombo.getSelectedItem());
-        runSearch.run();
-
-        IdeFocusManager.getInstance(project).requestFocus(searchField.getTextEditor(), true);
-        searchField.getTextEditor().selectAll();
     }
 
-    // --- Filter helpers ---
+    // --- Backward-compatible delegates for tests ---
 
-    private static JToggleButton createFilterButton(String text, ButtonGroup group, JPanel panel) {
-        JToggleButton btn = new JToggleButton(text) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                if (isSelected()) {
-                    Graphics2D g2 = (Graphics2D) g.create();
-                    g2.setColor(new JBColor(new Color(0x4A90D9), new Color(0x6AA8F0)));
-                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 4, 4);
-                    g2.dispose();
-                }
-            }
-        };
-        btn.setFont(btn.getFont().deriveFont(Font.PLAIN, btn.getFont().getSize() - 2f));
-        btn.setMargin(JBUI.insets(2, 6, 2, 6));
-        btn.setFocusPainted(false);
-
-        btn.addChangeListener(e -> btn.repaint());
-
-        group.add(btn);
-        panel.add(btn);
-        return btn;
+    static @NotNull String resolveInitialSearchText(@Nullable String initialText, @NotNull List<String> recentQueries) {
+        return SearchPopupModel.resolveInitialSearchText(initialText, recentQueries);
     }
 
-    private static @Nullable HttpMethod resolveSelectedMethod(ButtonGroup group, EnumMap<HttpMethod, JToggleButton> buttons) {
-        for (Map.Entry<HttpMethod, JToggleButton> entry : buttons.entrySet()) {
-            if (entry.getValue().isSelected()) {
-                return entry.getKey();
-            }
-        }
-        return null; // "All" selected
+    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady) {
+        return SearchPopupModel.buildStatusText(text, resultCount, totalCount, indexReady);
     }
 
-    private static @Nullable Module resolveSelectedModule(@NotNull JComboBox<String> combo,
-                                                          @Nullable Module currentModule,
-                                                          @NotNull List<RestServiceItem> items) {
-        Object selected = combo.getSelectedItem();
-        if (selected == null || RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_ALL).equals(selected)) return null;
-        String selectedStr = selected.toString();
-        if (currentModule != null && selectedStr.equals(formatCurrentModule(currentModule))) {
-            return currentModule;
-        }
-        // Otherwise find by module name
-        for (RestServiceItem item : items) {
-            if (selectedStr.equals(item.getModuleName())) {
-                return item.getModule();
-            }
-        }
-        return null;
+    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady,
+                                            @Nullable Module filterModule, @Nullable HttpMethod methodFilter) {
+        return SearchPopupModel.buildStatusText(text, resultCount, totalCount, indexReady, filterModule, methodFilter);
+    }
+
+    static int findSelectionIndex(@NotNull List<SearchResult> results, @Nullable String preferredEndpointKey) {
+        return SearchPopupModel.findSelectionIndex(results, preferredEndpointKey);
+    }
+
+    static int findSelectionIndex(@NotNull List<SearchResult> results,
+                                  @Nullable String preferredEndpointKey,
+                                  @Nullable Integer preferredSelectionIndex) {
+        return SearchPopupModel.findSelectionIndex(results, preferredEndpointKey, preferredSelectionIndex);
+    }
+
+    static @NotNull List<SearchResult> buildRecentResults(@NotNull List<RestServiceItem> items,
+                                                          @NotNull java.util.function.ToLongFunction<RestServiceItem> lastAccessLookup) {
+        return SearchPopupModel.buildRecentResults(items, lastAccessLookup);
     }
 
     static void refreshModuleFilter(@NotNull JComboBox<String> combo,
                                     @NotNull List<RestServiceItem> items,
                                     @Nullable Module currentModule,
                                     @Nullable Object preferredSelection) {
-        combo.removeAllItems();
-        String allModulesText = RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_ALL);
-        combo.addItem(allModulesText);
-        if (currentModule != null) {
-            combo.addItem(formatCurrentModule(currentModule));
-        }
-
-        Set<String> modules = new LinkedHashSet<>();
-        for (RestServiceItem item : items) {
-            String name = item.getModuleName();
-            if (name != null && !name.isEmpty()) {
-                // Skip current module if it's already shown as "Current Module: xxx"
-                if (currentModule != null && name.equals(currentModule.getName())) continue;
-                modules.add(name);
-            }
-        }
-        List<String> sorted = new ArrayList<>(modules);
-        Collections.sort(sorted);
-        for (String m : sorted) {
-            combo.addItem(m);
-        }
-
-        if (preferredSelection != null) {
-            String selectedText = preferredSelection.toString();
-            for (int i = 0; i < combo.getItemCount(); i++) {
-                if (selectedText.equals(combo.getItemAt(i))) {
-                    combo.setSelectedIndex(i);
-                    return;
-                }
-            }
-        }
-        combo.setSelectedItem(allModulesText);
+        SearchController.refreshModuleFilter(combo, items, currentModule, preferredSelection);
     }
 
-    // --- Existing helpers ---
-
-    static @NotNull String resolveInitialSearchText(@Nullable String initialText, @NotNull List<String> recentQueries) {
-        if (initialText != null && !initialText.isBlank()) {
-            return initialText;
-        }
-        return recentQueries.isEmpty() ? "" : recentQueries.get(0);
+    static void moveFocusToResults(@NotNull JBList<SearchResult> resultList) {
+        SearchPopupActions.moveFocusToResults(resultList);
     }
 
-    private static void performSearch(@NotNull String text, @NotNull EndpointIndex index,
-                                      @NotNull DefaultListModel<SearchResult> model,
-                                      @NotNull JBList<SearchResult> resultList,
-                                      @NotNull JLabel statusLabel,
-                                      @NotNull JButton searchAllModulesBtn,
-                                      @Nullable Module filterModule,
-                                      @NotNull UnifiedSearchRenderer renderer,
-                                      @Nullable HttpMethod methodFilter,
-                                      @Nullable String preferredEndpointKey,
-                                      @Nullable Integer preferredSelectionIndex,
-                                      @Nullable Integer preferredFirstVisibleIndex,
-                                      @Nullable Integer preferredScrollY) {
-        List<RestServiceItem> allItems = index.getItems();
-        boolean indexReady = index.isReady();
-        List<RestServiceItem> searchableItems = allItems;
-        if (filterModule != null) {
-            List<RestServiceItem> filtered = new java.util.ArrayList<>();
-            for (RestServiceItem item : allItems) {
-                if (filterModule.equals(item.getModule())) {
-                    filtered.add(item);
-                }
-            }
-            searchableItems = filtered;
-        }
-        final int totalCount = searchableItems.size();
-        SearchQuery query = SearchQuery.parse(text);
-
-        // If method filter is set but query didn't parse it, combine
-        if (methodFilter != null && query.methodFilter() == null) {
-            query = new SearchQuery(query.rawInput(), methodFilter, query.urlPattern(),
-                    query.classNamePattern(), query.methodNamePattern(), query.tokens());
-        }
-
-        SearchHistory history = SearchHistory.getInstance(index.getProject());
-        List<SearchResult> results;
-
-        // Empty query: show recently accessed endpoints (top 20)
-        if (text.isEmpty() && methodFilter == null) {
-            results = buildRecentResults(searchableItems, history::getLastAccessTime);
-        } else {
-            results = SearchEngine.search(query, searchableItems, 200, history::getUseCount);
-        }
-
-        // Set highlight tokens for renderer
-        renderer.setHighlightTokens(query.tokens());
-
-        SwingUtilities.invokeLater(() -> {
-            model.clear();
-            for (SearchResult result : results) {
-                model.addElement(result);
-            }
-            if (!results.isEmpty()) {
-                int selectionIndex = findSelectionIndex(results, preferredEndpointKey, preferredSelectionIndex);
-                selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
-            }
-
-            statusLabel.setText(buildStatusText(text, results.size(), totalCount, indexReady,
-                    filterModule, methodFilter));
-
-            // Show "搜索全部模块" button when no results and a module filter is active
-            searchAllModulesBtn.setVisible(results.isEmpty() && filterModule != null && !text.isEmpty());
-        });
-    }
-
-    static @NotNull List<SearchResult> buildRecentResults(@NotNull List<RestServiceItem> items,
-                                                          @NotNull ToLongFunction<RestServiceItem> lastAccessLookup) {
-        PriorityQueue<RestServiceItem> topItems = new PriorityQueue<>(
-                Comparator.comparingLong(lastAccessLookup));
-        for (RestServiceItem item : items) {
-            topItems.add(item);
-            if (topItems.size() > 20) {
-                topItems.poll();
-            }
-        }
-
-        List<RestServiceItem> sorted = new ArrayList<>(topItems);
-        sorted.sort(Comparator.comparingLong(lastAccessLookup).reversed());
-        return sorted.stream()
-                .map(item -> new SearchResult(item, 0, null))
-                .collect(java.util.stream.Collectors.toList());
-    }
-
-    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady) {
-        return buildStatusText(text, resultCount, totalCount, indexReady, null, null);
-    }
-
-    static @NotNull String buildStatusText(@NotNull String text, int resultCount, int totalCount, boolean indexReady,
-                                            @Nullable Module filterModule, @Nullable HttpMethod methodFilter) {
-        if (!indexReady && resultCount == 0) {
-            if (text.isEmpty()) {
-                return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_INDEXING);
-            }
-            return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_INDEXING_QUERY, text);
-        }
-
-        if (text.isEmpty()) {
-            if (totalCount == 0) {
-                return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_ENDPOINTS);
-            }
-            return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_ENDPOINTS_LOADED, totalCount);
-        }
-
-        if (resultCount == 0) {
-            StringBuilder sb = new StringBuilder();
-            sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_RESULTS, text));
-            if (methodFilter != null) {
-                sb.append(" [").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_METHOD)).append(": ")
-                        .append(methodFilter.name()).append("]");
-            }
-            if (filterModule != null) {
-                sb.append(" · ").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_MODULE)).append(": ")
-                        .append(filterModule.getName());
-            }
-            sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NO_RESULTS_HINT));
-            return sb.toString();
-        }
-
-        StringBuilder status = new StringBuilder();
-        status.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_RESULTS_FOUND, resultCount));
-        if (methodFilter != null) {
-            status.append(" [").append(methodFilter.name()).append("]");
-        }
-        if (filterModule != null) {
-            status.append(" ").append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_IN_MODULE, filterModule.getName()));
-        }
-        return status.toString();
-    }
-
-    static int findSelectionIndex(@NotNull List<SearchResult> results, @Nullable String preferredEndpointKey) {
-        return findSelectionIndex(results, preferredEndpointKey, null);
-    }
-
-    static int findSelectionIndex(@NotNull List<SearchResult> results,
-                                  @Nullable String preferredEndpointKey,
-                                  @Nullable Integer preferredSelectionIndex) {
-        if (preferredSelectionIndex != null
-                && preferredSelectionIndex >= 0
-                && preferredSelectionIndex < results.size()) {
-            return preferredSelectionIndex;
-        }
-        if (preferredEndpointKey != null && !preferredEndpointKey.isBlank()) {
-            for (int i = 0; i < results.size(); i++) {
-                if (preferredEndpointKey.equals(results.get(i).item().getSearchSelectionKey())) {
-                    return i;
-                }
-            }
-            for (int i = 0; i < results.size(); i++) {
-                if (preferredEndpointKey.equals(results.get(i).item().getEndpointKey())) {
-                    return i;
-                }
-            }
-        }
-        return results.isEmpty() ? -1 : 0;
+    static void moveSelectionFromSearchField(@NotNull JBList<SearchResult> resultList, int direction) {
+        SearchPopupActions.moveSelectionFromSearchField(resultList, direction);
     }
 
     static void selectAndRevealIndex(@NotNull JBList<SearchResult> resultList, int index) {
-        selectAndRevealIndex(resultList, index, null, null);
+        SearchPopupActions.selectAndRevealIndex(resultList, index);
     }
 
     static void selectAndRevealIndex(@NotNull JBList<SearchResult> resultList,
                                      int index,
                                      @Nullable Integer preferredFirstVisibleIndex) {
-        selectAndRevealIndex(resultList, index, preferredFirstVisibleIndex, null);
+        SearchPopupActions.selectAndRevealIndex(resultList, index, preferredFirstVisibleIndex);
     }
 
     static void selectAndRevealIndex(@NotNull JBList<SearchResult> resultList,
                                      int index,
                                      @Nullable Integer preferredFirstVisibleIndex,
                                      @Nullable Integer preferredScrollY) {
-        if (index < 0 || index >= resultList.getModel().getSize()) {
-            return;
-        }
-        resultList.setSelectedIndex(index);
-        revealIndex(resultList, preferredFirstVisibleIndex, preferredScrollY, index);
-        SwingUtilities.invokeLater(() -> {
-            if (index >= 0 && index < resultList.getModel().getSize()
-                    && resultList.getSelectedIndex() == index) {
-                revealIndex(resultList, preferredFirstVisibleIndex, preferredScrollY, index);
-            }
-        });
-    }
-
-    private static void revealIndex(@NotNull JBList<SearchResult> resultList,
-                                    @Nullable Integer preferredFirstVisibleIndex,
-                                    @Nullable Integer preferredScrollY,
-                                    int selectedIndex) {
-        if (restoreScrollY(resultList, preferredScrollY)) {
-            return;
-        }
-        int modelSize = resultList.getModel().getSize();
-        if (preferredFirstVisibleIndex != null
-                && preferredFirstVisibleIndex >= 0
-                && preferredFirstVisibleIndex < modelSize) {
-            resultList.ensureIndexIsVisible(preferredFirstVisibleIndex);
-            return;
-        }
-        resultList.ensureIndexIsVisible(selectedIndex);
-    }
-
-    private static boolean restoreScrollY(@NotNull JBList<SearchResult> resultList,
-                                          @Nullable Integer preferredScrollY) {
-        if (preferredScrollY == null || preferredScrollY < 0) {
-            return false;
-        }
-        Container parent = resultList.getParent();
-        if (!(parent instanceof JViewport viewport)) {
-            return false;
-        }
-        int maxY = Math.max(0, resultList.getPreferredSize().height - viewport.getExtentSize().height);
-        int y = Math.min(preferredScrollY, maxY);
-        viewport.setViewPosition(new Point(0, y));
-        return true;
-    }
-
-    private static void recordWindowState(@NotNull SearchHistory history,
-                                          @NotNull String query,
-                                          @NotNull JBList<SearchResult> resultList) {
-        history.recordWindowState(query, resultList.getSelectedIndex(), resultList.getFirstVisibleIndex(),
-                resultList.getVisibleRect().y);
-    }
-
-    static void moveFocusToResults(@NotNull JBList<SearchResult> resultList) {
-        if (resultList.getModel().getSize() <= 0) {
-            return;
-        }
-        int selectedIndex = resultList.getSelectedIndex();
-        if (selectedIndex < 0) {
-            selectedIndex = 0;
-            resultList.setSelectedIndex(selectedIndex);
-        }
-        resultList.ensureIndexIsVisible(selectedIndex);
-        resultList.requestFocusInWindow();
-    }
-
-    static void moveSelectionFromSearchField(@NotNull JBList<SearchResult> resultList, int direction) {
-        int size = resultList.getModel().getSize();
-        if (size <= 0) {
-            return;
-        }
-
-        int selectedIndex = resultList.getSelectedIndex();
-        int nextIndex;
-        if (selectedIndex < 0) {
-            nextIndex = direction < 0 ? size - 1 : 0;
-        } else {
-            nextIndex = Math.max(0, Math.min(size - 1, selectedIndex + direction));
-        }
-        resultList.setSelectedIndex(nextIndex);
-        resultList.ensureIndexIsVisible(nextIndex);
-    }
-
-    private static void installSearchFieldNavigation(@NotNull SearchTextField searchField,
-                                                     @NotNull JBList<SearchResult> resultList) {
-        JComponent editor = searchField.getTextEditor();
-        InputMap inputMap = editor.getInputMap(JComponent.WHEN_FOCUSED);
-        ActionMap actionMap = editor.getActionMap();
-
-        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), "restful.search.selectPrevious");
-        actionMap.put("restful.search.selectPrevious", new AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                moveSelectionFromSearchField(resultList, -1);
-            }
-        });
-
-        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), "restful.search.selectNext");
-        actionMap.put("restful.search.selectNext", new AbstractAction() {
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent e) {
-                moveSelectionFromSearchField(resultList, 1);
-            }
-        });
-    }
-
-    private static void navigateToSelected(@NotNull JBList<SearchResult> resultList,
-                                           @NotNull JBPopup popup,
-                                           @NotNull SearchHistory history) {
-        SearchResult selected = resultList.getSelectedValue();
-        if (selected != null) {
-            RestServiceItem item = selected.item();
-            history.recordAccess(item);
-            popup.closeOk(null);
-            item.navigate(true);
-        }
-    }
-
-    private static void copySelectedPath(@NotNull JBList<SearchResult> resultList) {
-        SearchResult selected = resultList.getSelectedValue();
-        if (selected != null) {
-            String path = selected.item().getUrl();
-            if (path != null) {
-                Toolkit.getDefaultToolkit().getSystemClipboard()
-                        .setContents(new StringSelection(path), null);
-            }
-        }
-    }
-
-    private static void updateSelectionSummary(@NotNull JLabel selectionLabel, @NotNull RestServiceItem item) {
-        String method = item.getMethod() != null ? item.getMethod().name() : "?";
-        String url = item.getUrl() != null ? item.getUrl() : "";
-        String controllerName = item.getControllerName();
-        String methodName = item.getMethodName();
-        String moduleName = item.getModuleName();
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SELECTION_CURRENT)).append(method).append(" ").append(url);
-        if (controllerName != null && !controllerName.isEmpty() && methodName != null && !methodName.isEmpty()) {
-            sb.append(" · ").append(controllerName).append("#").append(methodName);
-        }
-        if (moduleName != null && !moduleName.isEmpty()) {
-            sb.append(" · ").append(moduleName);
-        }
-        selectionLabel.setText(sb.toString());
-    }
-
-    private static @NotNull String formatCurrentModule(@NotNull Module module) {
-        return RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_CURRENT, module.getName());
+        SearchPopupActions.selectAndRevealIndex(resultList, index, preferredFirstVisibleIndex, preferredScrollY);
     }
 }

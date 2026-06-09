@@ -1,7 +1,7 @@
 package com.sount.restful.common;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.sount.utils.JsonUtils;
+import com.sount.restful.utils.JsonUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;

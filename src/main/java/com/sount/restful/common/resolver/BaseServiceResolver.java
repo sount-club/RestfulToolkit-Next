@@ -11,7 +11,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.sount.restful.method.RequestPath;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
@@ -25,7 +25,7 @@ public abstract class BaseServiceResolver implements ServiceResolver {
     @NotNull
     public static List<RestServiceItem> findAllEndpoints(@NotNull Module module) {
         Map<String, RestServiceItem> deduped = new LinkedHashMap<>();
-        for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(module), new JaxrsResolver(module)}) {
+        for (ServiceResolver resolver : ServiceResolverRegistry.forModule(module)) {
             for (RestServiceItem item : resolver.findAllSupportedServiceItemsInModule()) {
                 deduped.putIfAbsent(item.getSearchSelectionKey(), item);
             }
@@ -36,7 +36,7 @@ public abstract class BaseServiceResolver implements ServiceResolver {
     @NotNull
     public static List<RestServiceItem> findAllEndpoints(@NotNull Project project) {
         Map<String, RestServiceItem> deduped = new LinkedHashMap<>();
-        for (ServiceResolver resolver : new ServiceResolver[]{new SpringResolver(project), new JaxrsResolver(project)}) {
+        for (ServiceResolver resolver : ServiceResolverRegistry.forProject(project)) {
             for (RestServiceItem item : resolver.findAllSupportedServiceItemsInProject()) {
                 deduped.putIfAbsent(item.getSearchSelectionKey(), item);
             }

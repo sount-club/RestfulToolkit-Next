@@ -6,7 +6,7 @@ import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiMethod;
 import com.intellij.util.ui.UIUtil;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 
 import javax.swing.*;
 import java.util.List;

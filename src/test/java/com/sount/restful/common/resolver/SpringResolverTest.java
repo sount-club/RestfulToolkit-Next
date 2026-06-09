@@ -1,7 +1,7 @@
 package com.sount.restful.common.resolver;
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 import java.util.List;

@@ -11,7 +11,7 @@ import com.intellij.psi.search.GlobalSearchScope;
 import com.sount.restful.annotations.JaxrsPathAnnotation;
 import com.sount.restful.common.jaxrs.JaxrsAnnotationHelper;
 import com.sount.restful.method.RequestPath;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 
 import java.util.ArrayList;
 import java.util.Collection;

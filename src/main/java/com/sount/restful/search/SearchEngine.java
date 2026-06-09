@@ -1,8 +1,7 @@
 package com.sount.restful.search;
 
 import com.intellij.openapi.diagnostic.Logger;
-import com.sount.restful.method.HttpMethod;
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

@@ -10,11 +10,15 @@ import org.jetbrains.annotations.Nullable;
 
 import java.awt.datatransfer.StringSelection;
 
+/**
+ * 将 Java / Kotlin 类转换为格式化 JSON 并复制到剪贴板。
+ * <p>
+ * 右键菜单 → "Convert to JSON"
+ */
 public class ConvertClassToJSONAction extends AbstractBaseAction {
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         PsiClass psiClass = findTargetClass(e);
-
         if (psiClass == null) return;
 
         String json = PsiClassHelper.create(psiClass).convertClassToJSON(myProject(e), true);

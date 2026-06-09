@@ -9,7 +9,7 @@ import com.sount.restful.annotations.SpringControllerAnnotation;
 import com.sount.restful.common.jaxrs.JaxrsAnnotationHelper;
 import com.sount.restful.common.spring.RequestMappingAnnotationHelper;
 import com.sount.restful.method.Parameter;
-import com.sount.restful.method.action.ModuleHelper;
+import com.sount.restful.method.ModuleHelper;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 

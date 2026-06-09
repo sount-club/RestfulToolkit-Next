@@ -22,6 +22,16 @@ import org.jspecify.annotations.NonNull;
 
 import java.awt.*;
 
+/**
+ * 所有 RestfulToolkit Action 的抽象基类。
+ * <p>
+ * 提供通用能力：
+ * <ul>
+ *   <li>从编辑器上下文定位当前 PsiMethod / PsiClass（支持 Java 和 Kotlin）</li>
+ *   <li>Action 可见性控制（{@link #setActionPresentationVisible}）</li>
+ *   <li>操作成功后的气泡提示（{@link #showPopupBalloon}）</li>
+ * </ul>
+ */
 public abstract class AbstractBaseAction extends AnAction {
 
     @Override
@@ -37,12 +47,6 @@ public abstract class AbstractBaseAction extends AnAction {
         return getEventProject(e);
     }
 
-    /**
-     * 设置触发有效条件
-     *
-     * @param e
-     * @param visible
-     */
     protected void setActionPresentationVisible(AnActionEvent e, boolean visible) {
         e.getPresentation().setVisible(visible);
     }
@@ -114,5 +118,4 @@ public abstract class AbstractBaseAction extends AnAction {
 
         return PsiTreeUtil.getParentOfType(psiElement, PsiClass.class, false);
     }
-
 }

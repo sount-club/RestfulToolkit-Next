@@ -1,6 +1,6 @@
 package com.sount.restful.common.resolver;
 
-import com.sount.restful.navigation.action.RestServiceItem;
+import com.sount.restful.navigation.RestServiceItem;
 
 import java.util.List;
 

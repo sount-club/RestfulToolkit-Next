@@ -55,7 +55,7 @@ intellijPlatform {
             <ul>
               <li>Grouped editor context-menu actions under the RestfulToolkit Next submenu</li>
               <li>Fixed method and class right-click actions so they resolve from the current caret/context element</li>
-              <li>Improved RestServices request panel with searchable endpoints, editable headers, body modes, and response metadata</li>
+              <li>Improved endpoint navigation and editor context-menu actions for generating URLs and request data</li>
             </ul>
         """.trimIndent()
     }

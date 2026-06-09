@@ -7,9 +7,9 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.sount.restful.common.ToolkitIcons;
 import com.sount.restful.method.HttpMethod;
-import com.sount.restful.navigation.action.RestServiceItem;
-import com.sount.utils.RestfulToolkitBundle;
-import com.sount.utils.RestfulToolkitBundle.Keys;
+import com.sount.restful.navigation.RestServiceItem;
+import com.sount.restful.utils.RestfulToolkitBundle;
+import com.sount.restful.utils.RestfulToolkitBundle.Keys;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;

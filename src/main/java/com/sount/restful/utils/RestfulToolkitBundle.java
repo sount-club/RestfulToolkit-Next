@@ -1,4 +1,4 @@
-package com.sount.utils;
+package com.sount.restful.utils;
 
 import com.intellij.DynamicBundle;
 import org.jetbrains.annotations.Nls;

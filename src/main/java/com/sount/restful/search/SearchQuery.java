@@ -37,7 +37,13 @@ public record SearchQuery(
             }
         }
 
-        // 2. Check for class#method pattern: "UserController#getUser"
+        // 2. Extract path from full HTTP URL: "http://localhost:8080/api/users?id=1" → "/api/users"
+        if (remainder.startsWith("http://") || remainder.startsWith("https://")) {
+            remainder = extractUrlPath(remainder);
+            if (remainder.isEmpty()) return EMPTY;
+        }
+
+        // 3. Check for class#method pattern: "UserController#getUser"
         if (remainder.contains("#")) {
             int lastHash = remainder.lastIndexOf('#');
             String classPart = remainder.substring(0, lastHash).trim();
@@ -84,6 +90,27 @@ public record SearchQuery(
         return Arrays.stream(text.split("\\s+"))
                 .filter(s -> !s.isBlank())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Extract path from a full HTTP URL, stripping scheme, host, port, query, and fragment.
+     * {@code "http://localhost:8080/api/users?id=1#list"} → {@code "/api/users"}
+     */
+    static @NotNull String extractUrlPath(@NotNull String url) {
+        int start = url.indexOf("://");
+        if (start < 0) return url;
+        start += 3;
+
+        int pathStart = url.indexOf('/', start);
+        if (pathStart < 0) return "/";
+
+        int pathEnd = url.length();
+        int queryStart = url.indexOf('?', pathStart);
+        if (queryStart >= 0) pathEnd = queryStart;
+        int fragmentStart = url.indexOf('#', pathStart);
+        if (fragmentStart >= 0 && fragmentStart < pathEnd) pathEnd = fragmentStart;
+
+        return url.substring(pathStart, pathEnd);
     }
 
     public boolean isEmpty() {

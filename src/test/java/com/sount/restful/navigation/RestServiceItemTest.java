@@ -1,4 +1,4 @@
-package com.sount.restful.navigation.action;
+package com.sount.restful.navigation;
 
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.openapi.project.Project;
