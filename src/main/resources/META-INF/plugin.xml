@@ -51,6 +51,17 @@
   </p>
     ]]></description>
 	<change-notes><![CDATA[
+        <p><strong>RestfulToolkit Next 1.1.1</strong></p>
+        <ul>
+          <li>Updated README and plugin metadata to match the current unified search popup and editor context-menu features</li>
+          <li>Fixed service registration tests for <code>EndpointIndex</code> and the project-level <code>SearchHistory</code> service</li>
+          <li>Introduced <code>EndpointDescriptor</code> as a pure endpoint data model to reduce coupling between navigation, search fields, and PSI elements</li>
+          <li>Extracted <code>SearchPopupModel</code> for non-UI search popup logic such as status text, recent results, and selection restoration</li>
+          <li>Added <code>ServiceResolverRegistry</code> to centralize Spring and JAX-RS resolver registration for future framework extensions</li>
+          <li>Split Spring Java and Kotlin endpoint discovery collaborators to keep <code>SpringResolver</code> focused on orchestration</li>
+          <li>Added architecture guard tests and verified the project with <code>./gradlew test</code> and <code>./gradlew build</code></li>
+        </ul>
+
         <p><strong>RestfulToolkit Next 1.1.0</strong></p>
         <ul>
           <li>Added a unified REST endpoint search popup with path, HTTP method, module, controller, method name, and description matching</li>

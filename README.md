@@ -13,6 +13,18 @@
 
 ---
 
+## 1.1.1 更新
+
+- 修正 README 与插件发布说明中已过期的 `RestServices` 工具窗口描述，统一为当前的统一搜索窗口和编辑器右键能力
+- 补齐插件服务注册测试，覆盖 `EndpointIndex` 的 `plugin.xml` 注册和 `SearchHistory` 的项目级服务注解
+- 抽取 `EndpointDescriptor` 作为 REST 接口的纯数据模型，降低导航项、搜索字段和 PSI 元素之间的耦合
+- 抽取 `SearchPopupModel` 承载统一搜索窗口的纯逻辑，减少 `UnifiedSearchPopup` 中的非 UI 职责
+- 新增 `ServiceResolverRegistry`，集中管理 Spring 与 JAX-RS resolver 注册，方便后续扩展更多框架解析器
+- 拆分 Spring Java / Kotlin 接口解析协作者，缩小 `SpringResolver` 的编排职责
+- 补充架构约束测试并通过 `./gradlew test` 与 `./gradlew build` 验证
+
+---
+
 ## 1.1.0 更新
 
 - URL 跳转面板升级为统一搜索窗口，支持按路径、HTTP Method、模块名、Controller、方法名和接口描述搜索
