@@ -7,11 +7,11 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifierList;
 import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
+import com.sount.restful.common.PsiAnnotationHelper;
 import com.sount.restful.common.PsiMethodHelper;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * 方法级别 REST Action 的基类。
@@ -43,17 +43,17 @@ public abstract class SpringAnnotatedMethodAction extends AbstractBaseAction {
         for (PsiAnnotation annotation : annotations) {
             boolean match = Arrays.stream(SpringRequestMethodAnnotation.values())
                     .map(SpringRequestMethodAnnotation::getQualifiedName)
-                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+                    .anyMatch(name -> PsiAnnotationHelper.hasQualifiedName(annotation, name));
             if (match) return true;
         }
 
         for (PsiAnnotation annotation : annotations) {
             boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values())
                     .map(JaxrsHttpMethodAnnotation::getQualifiedName)
-                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+                    .anyMatch(name -> PsiAnnotationHelper.hasQualifiedName(annotation, name));
             if (match) return true;
         }
 
-        return PsiMethodHelper.isJaxrsRestSupported(Objects.requireNonNull(psiMethod.getContainingClass()));
+        return PsiMethodHelper.isJaxrsRestSupported(psiMethod.getContainingClass());
     }
 }

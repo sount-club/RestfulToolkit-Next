@@ -3,6 +3,7 @@ package com.sount.restful.search;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.JBPopupListener;
@@ -74,6 +75,7 @@ public final class UnifiedSearchPopup {
                 index, currentModule, props);
 
         Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
+        SearchController.UpdateGuard updateGuard = new SearchController.UpdateGuard();
 
         Runnable runSearch = () -> {
             String text = searchField.getText();
@@ -83,7 +85,7 @@ public final class UnifiedSearchPopup {
                     components.moduleCombo, currentModule, index.getItems());
             SearchController.performSearch(text, index, listModel, resultList,
                     components.statusLabel, components.searchAllModulesBtn,
-                    filterModule, renderer, methodFilter,
+                    filterModule, renderer, updateGuard, methodFilter,
                     history.getSelectedEndpointKey(text),
                     history.getSelectedIndex(text),
                     history.getFirstVisibleIndex(text),
@@ -223,7 +225,7 @@ public final class UnifiedSearchPopup {
         JLabel moduleLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_MODULE_LABEL) + " ");
         moduleLabel.setFont(moduleLabel.getFont().deriveFont(Font.PLAIN, moduleLabel.getFont().getSize() - 1f));
         moduleFilterPanel.add(moduleLabel);
-        JComboBox<String> moduleCombo = new JComboBox<>();
+        ComboBox<String> moduleCombo = new ComboBox<>();
         moduleCombo.setFont(moduleCombo.getFont().deriveFont(Font.PLAIN, moduleCombo.getFont().getSize() - 1f));
         String savedModule = props.getValue(SELECTED_MODULE_KEY);
         SearchController.refreshModuleFilter(moduleCombo, index.getItems(), currentModule, savedModule);
@@ -256,7 +258,7 @@ public final class UnifiedSearchPopup {
 
         JButton searchAllModulesBtn = new JButton(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_SEARCH_ALL_MODULES));
         searchAllModulesBtn.setFont(searchAllModulesBtn.getFont().deriveFont(Font.PLAIN, searchAllModulesBtn.getFont().getSize() - 2f));
-        searchAllModulesBtn.setMargin(JBUI.insets(2, 8, 2, 8));
+        searchAllModulesBtn.setMargin(JBUI.insets(2, 8));
         searchAllModulesBtn.setVisible(false);
         searchAllModulesBtn.addActionListener(e -> moduleCombo.setSelectedIndex(0));
 
@@ -289,7 +291,7 @@ public final class UnifiedSearchPopup {
             @NotNull JPanel mainPanel,
             @NotNull ButtonGroup methodGroup,
             @NotNull EnumMap<HttpMethod, JToggleButton> methodButtons,
-            @NotNull JComboBox<String> moduleCombo,
+            @NotNull ComboBox<String> moduleCombo,
             @NotNull JLabel statusLabel,
             @NotNull JLabel selectionLabel,
             @NotNull JButton searchAllModulesBtn

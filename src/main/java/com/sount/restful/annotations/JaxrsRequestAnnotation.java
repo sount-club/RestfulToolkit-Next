@@ -15,7 +15,7 @@ public enum JaxrsRequestAnnotation {
     private final String qualifiedName;
     private final String methodName;
 
-   public String methodName() {
+    public String methodName() {
         return this.methodName;
     }
 
@@ -25,24 +25,6 @@ public enum JaxrsRequestAnnotation {
 
     public String getShortName() {
         return shortName;
-    }
-
-    public static JaxrsRequestAnnotation getByShortName(String shortName) {
-        for (JaxrsRequestAnnotation requestAnnotation : JaxrsRequestAnnotation.values()) {
-            if (requestAnnotation.getShortName().equals(shortName)) {
-                return requestAnnotation;
-            }
-        }
-        return null;
-    }
-
-    public static JaxrsRequestAnnotation getByQualifiedName(String qualifiedName) {
-        for (JaxrsRequestAnnotation requestAnnotation : JaxrsRequestAnnotation.values()) {
-            if (requestAnnotation.getQualifiedName().equals(qualifiedName)) {
-                return requestAnnotation;
-            }
-        }
-       return null;
     }
 
 }

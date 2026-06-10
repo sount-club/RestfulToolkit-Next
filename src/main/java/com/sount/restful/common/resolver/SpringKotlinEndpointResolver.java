@@ -213,6 +213,23 @@ final class SpringKotlinEndpointResolver {
         return requestPaths;
     }
 
+    private List<String> parseArgumentValues(KtExpression argumentExpression) {
+        List<String> values = new ArrayList<>();
+        if (argumentExpression.getText().startsWith("arrayOf")) {
+            for (KtValueArgument pathValueArgument : ((KtCallExpression) argumentExpression).getValueArguments()) {
+                values.add(pathValueArgument.getText().replace("\"", ""));
+            }
+        } else if (argumentExpression.getText().startsWith("[")) {
+            for (KtExpression ktExpression : ((KtCollectionLiteralExpression) argumentExpression).getInnerExpressions()) {
+                values.add(ktExpression.getText().replace("\"", ""));
+            }
+        } else {
+            PsiElement[] paths = argumentExpression.getChildren();
+            values.add(paths.length == 0 ? "" : paths[0].getText());
+        }
+        return values;
+    }
+
     private List<String> getAttributeValues(KtAnnotationEntry entry, String attribute) {
         KtValueArgumentList valueArgumentList = entry.getValueArgumentList();
         if (valueArgumentList == null) return new ArrayList<>();
@@ -223,20 +240,7 @@ final class SpringKotlinEndpointResolver {
             if (argumentExpression == null) continue;
 
             if ((argumentName == null && attribute == null) || (argumentName != null && argumentName.getText().equals(attribute))) {
-                List<String> values = new ArrayList<>();
-                if (argumentExpression.getText().startsWith("arrayOf")) {
-                    for (KtValueArgument pathValueArgument : ((KtCallExpression) argumentExpression).getValueArguments()) {
-                        values.add(pathValueArgument.getText().replace("\"", ""));
-                    }
-                } else if (argumentExpression.getText().startsWith("[")) {
-                    for (KtExpression ktExpression : ((KtCollectionLiteralExpression) argumentExpression).getInnerExpressions()) {
-                        values.add(ktExpression.getText().replace("\"", ""));
-                    }
-                } else {
-                    PsiElement[] paths = argumentExpression.getChildren();
-                    values.add(paths.length == 0 ? "" : paths[0].getText());
-                }
-                return values;
+                return parseArgumentValues(argumentExpression);
             }
         }
 

@@ -1,6 +1,7 @@
 package com.sount.restful.common.resolver;
 
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
@@ -41,7 +42,13 @@ final class SpringJavaEndpointResolver {
             }
             if (!processedJavaClasses.add(psiClass)) continue;
 
-            items.addAll(owner.getServiceItemList(psiClass));
+            try {
+                items.addAll(owner.getServiceItemList(psiClass));
+            } catch (ProcessCanceledException e) {
+                throw e;
+            } catch (Throwable e) {
+                SpringResolver.LOG.debug("Failed to collect Spring endpoints from Java class", e);
+            }
         }
         return items;
     }

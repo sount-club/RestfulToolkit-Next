@@ -64,16 +64,26 @@ public abstract class BaseServiceResolver implements ServiceResolver {
     protected List<PsiMethod> getClassMethodsIncludingParents(@NotNull PsiClass psiClass) {
         List<PsiMethod> allMethods = new ArrayList<>();
         PsiClass currentClass = psiClass;
-        while (currentClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(currentClass.getQualifiedName())) {
-            Collections.addAll(allMethods, currentClass.getMethods());
-            currentClass = currentClass.getSuperClass();
+        while (currentClass != null) {
+            try {
+                if (CommonClassNames.JAVA_LANG_OBJECT.equals(currentClass.getQualifiedName())) {
+                    break;
+                }
+                Collections.addAll(allMethods, currentClass.getMethods());
+                currentClass = currentClass.getSuperClass();
+            } catch (ProcessCanceledException e) {
+                throw e;
+            } catch (Throwable e) {
+                LOG.debug("Failed to inspect class methods while resolving REST endpoints", e);
+                break;
+            }
         }
         return allMethods;
     }
 
     @Override
     public List<RestServiceItem> findAllSupportedServiceItemsInProject() {
-        List<RestServiceItem> itemList = null;
+        List<RestServiceItem> itemList;
         if (myProject == null && myModule != null) {
             myProject = myModule.getProject();
         }

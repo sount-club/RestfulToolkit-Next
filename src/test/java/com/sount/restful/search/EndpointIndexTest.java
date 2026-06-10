@@ -16,4 +16,16 @@ public class EndpointIndexTest extends BasePlatformTestCase {
 
         assertTrue(EndpointIndex.canAffectEndpointIndex(file));
     }
+
+    public void testDirtyGenerationMarksOlderRebuildAsStale() {
+        EndpointIndex index = EndpointIndex.getInstance(getProject());
+
+        long firstGeneration = index.currentDirtyGeneration();
+        index.markDirtyForRebuild();
+        long secondGeneration = index.currentDirtyGeneration();
+
+        assertTrue(secondGeneration > firstGeneration);
+        assertTrue(index.isStaleRebuild(firstGeneration));
+        assertFalse(index.isStaleRebuild(secondGeneration));
+    }
 }

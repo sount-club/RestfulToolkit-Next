@@ -12,6 +12,7 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.util.*;
 import java.util.function.ToLongFunction;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Search dispatch, filtering logic, and module/method filter management
@@ -31,11 +32,13 @@ final class SearchController {
                               @NotNull JButton searchAllModulesBtn,
                               @Nullable Module filterModule,
                               @NotNull UnifiedSearchRenderer renderer,
+                              @NotNull UpdateGuard updateGuard,
                               @Nullable HttpMethod methodFilter,
                               @Nullable String preferredEndpointKey,
                               @Nullable Integer preferredSelectionIndex,
                               @Nullable Integer preferredFirstVisibleIndex,
                               @Nullable Integer preferredScrollY) {
+        long updateGeneration = updateGuard.nextGeneration();
         List<RestServiceItem> allItems = index.getItems();
         boolean indexReady = index.isReady();
         List<RestServiceItem> searchableItems = allItems;
@@ -70,7 +73,7 @@ final class SearchController {
         // Set highlight tokens for renderer
         renderer.setHighlightTokens(query.tokens());
 
-        SwingUtilities.invokeLater(() -> {
+        SwingUtilities.invokeLater(() -> runIfLatest(updateGuard, updateGeneration, () -> {
             model.clear();
             for (SearchResult result : results) {
                 model.addElement(result);
@@ -85,7 +88,25 @@ final class SearchController {
 
             // Show "搜索全部模块" button when no results and a module filter is active
             searchAllModulesBtn.setVisible(results.isEmpty() && filterModule != null && !text.isEmpty());
-        });
+        }));
+    }
+
+    static void runIfLatest(@NotNull UpdateGuard updateGuard, long generation, @NotNull Runnable update) {
+        if (updateGuard.isLatest(generation)) {
+            update.run();
+        }
+    }
+
+    static final class UpdateGuard {
+        private final AtomicLong generation = new AtomicLong();
+
+        long nextGeneration() {
+            return generation.incrementAndGet();
+        }
+
+        boolean isLatest(long candidate) {
+            return generation.get() == candidate;
+        }
     }
 
     // --- Filter resolution ---

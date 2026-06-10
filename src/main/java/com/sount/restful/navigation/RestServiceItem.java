@@ -1,11 +1,8 @@
 package com.sount.restful.navigation;
 
-import com.intellij.ide.util.EditSourceUtil;
 import com.intellij.navigation.ItemPresentation;
 import com.intellij.navigation.NavigationItem;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
-import com.intellij.pom.Navigatable;
 import com.intellij.psi.PsiAnnotation;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
@@ -28,16 +25,16 @@ import java.util.Objects;
 
 //RequestMappingNavigationItem
 public class RestServiceItem implements NavigationItem {
-    private PsiMethod psiMethod; //元素
+    private final PsiMethod psiMethod; //元素
     private final PsiElement psiElement; //元素
+    private final EndpointNavigationTarget navigationTarget;
     private Module module;
 
     private final String requestMethod; //请求方法 get/post...
-    private HttpMethod method;  //请求方法 get/post...
+    private final HttpMethod method;  //请求方法 get/post...
 
-    private String url; //url mapping;
+    private final String url; //url mapping;
 
-    private Navigatable navigationElement;
     private String cachedLocationText; // pre-computed at construction time (inside read action)
     private String cachedJavadoc;      // pre-computed at construction time
     private String cachedModuleName;   // pre-computed at construction time
@@ -50,18 +47,16 @@ public class RestServiceItem implements NavigationItem {
 
     public RestServiceItem(PsiElement psiElement, String requestMethod, String urlPath) {
         this.psiElement = psiElement;
-        if (psiElement instanceof PsiMethod) {
-            this.psiMethod = (PsiMethod) psiElement;
-        }
+        this.navigationTarget = new EndpointNavigationTarget(psiElement);
+        this.psiMethod = psiElement instanceof PsiMethod methodElement ? methodElement : null;
         this.requestMethod = requestMethod;
+        HttpMethod resolvedMethod = null;
         if (requestMethod != null) {
-            method = HttpMethod.getByRequestMethod(requestMethod);
+            resolvedMethod = HttpMethod.getByRequestMethod(requestMethod);
         }
+        this.method = resolvedMethod;
 
         this.url = urlPath;
-        if (psiElement instanceof Navigatable) {
-            navigationElement = (Navigatable) psiElement;
-        }
         // Pre-compute all PSI-dependent fields at construction time (inside read action)
         this.cachedLocationText = computeLocationText();
         this.cachedJavadoc = computeJavadoc();
@@ -86,33 +81,12 @@ public class RestServiceItem implements NavigationItem {
 
     @Override
     public void navigate(boolean requestFocus) {
-        // PSI access (isValid, canNavigate, getTextOffset) requires read lock.
-        // Compute descriptor inside ReadAction, navigate outside.
-        // EditSourceUtil.getDescriptor() → getTextOffset() needs read lock.
-        // OpenFileDescriptor.navigate() uses WriteIntentReadAction internally.
-        Navigatable navDescriptor = ReadAction.computeBlocking(() -> {
-            if (psiElement == null || !psiElement.isValid()) return null;
-            Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
-            if (descriptor != null) return descriptor;
-            return navigationElement != null && navigationElement.canNavigate() ? navigationElement : null;
-        });
-        if (navDescriptor != null) {
-            navDescriptor.navigate(requestFocus);
-        }
+        navigationTarget.navigate(requestFocus);
     }
 
     @Override
     public boolean canNavigate() {
-        if (navigationElement != null) {
-            // PSI access (isValid, canNavigate) requires read lock
-            return ReadAction.computeBlocking(() -> psiElement != null && psiElement.isValid() && navigationElement.canNavigate());
-        }
-        if (psiElement == null) return false;
-        return ReadAction.computeBlocking(() -> {
-            if (!psiElement.isValid()) return false;
-            Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
-            return descriptor != null && descriptor.canNavigate();
-        });
+        return navigationTarget.canNavigate();
     }
 
     @Override
@@ -174,28 +148,12 @@ public class RestServiceItem implements NavigationItem {
         return psiMethod;
     }
 
-    public void setPsiMethod(PsiMethod psiMethod) {
-        this.psiMethod = psiMethod;
-    }
-
     public HttpMethod getMethod() {
         return method;
     }
 
-    public void setMethod(HttpMethod method) {
-        this.method = method;
-        rebuildDescriptor();
-        this.cachedSearchSelectionKey = null;
-    }
-
     public String getUrl() {
         return url;
-    }
-
-    public void setUrl(String url) {
-        this.url = url;
-        rebuildDescriptor();
-        this.cachedSearchSelectionKey = null;
     }
 
     public String getFullUrl() {
@@ -311,7 +269,7 @@ public class RestServiceItem implements NavigationItem {
         // 1. Try annotation-based descriptions
         if (psiElement instanceof PsiMethod method) {
             for (PsiAnnotation annotation : method.getAnnotations()) {
-                String qualifiedName = annotation.getQualifiedName();
+                String qualifiedName = PsiAnnotationHelper.getQualifiedName(annotation);
                 if (qualifiedName == null) continue;
                 // @ApiOperation("xxx")
                 if ("io.swagger.annotations.ApiOperation".equals(qualifiedName)) {

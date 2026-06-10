@@ -28,6 +28,9 @@ public class GenerateFullUrlAction extends SpringAnnotatedMethodAction {
         }
 
         String url = PsiMethodHelper.create(psiMethod).withModule(module).buildFullUrlWithParams();
+        if (url == null) {
+            return;
+        }
         CopyPasteManager.getInstance().setContents(new StringSelection(url));
         Editor myEditor = e.getData(CommonDataKeys.EDITOR);
         if (myEditor != null) {

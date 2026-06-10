@@ -10,6 +10,9 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import org.jetbrains.annotations.Nullable;
 import org.jspecify.annotations.NonNull;
 
+import java.lang.reflect.Method;
+import java.util.Arrays;
+
 public class RestServiceItemTest extends BasePlatformTestCase {
 
     public void testNavigateUsesCachedNavigatableElement() {
@@ -22,16 +25,26 @@ public class RestServiceItemTest extends BasePlatformTestCase {
         assertTrue(element.lastRequestFocus);
     }
 
-    public void testSearchSelectionKeyIsCachedAndInvalidatedWhenUrlChanges() {
+    public void testNavigationTargetOwnsPsiNavigation() {
         TrackingNavigatablePsiElement element = new TrackingNavigatablePsiElement(getProject());
-        RestServiceItem item = new RestServiceItem(element, "GET", "/activity/list");
+        EndpointNavigationTarget target = new EndpointNavigationTarget(element);
 
-        String first = item.getSearchSelectionKey();
-        String second = item.getSearchSelectionKey();
-        item.setUrl("/activity/detail");
+        target.navigate(true);
 
-        assertSame(first, second);
-        assertEquals("GET:/activity/detail::", item.getSearchSelectionKey());
+        assertEquals(1, element.navigateCalls);
+        assertSame(element, target.getPsiElement());
+    }
+
+    public void testRestServiceItemDoesNotExposeUnusedMutableSetters() {
+        assertFalse(hasMethod("setPsiMethod"));
+        assertFalse(hasMethod("setMethod"));
+        assertFalse(hasMethod("setUrl"));
+    }
+
+    private boolean hasMethod(String name) {
+        return Arrays.stream(RestServiceItem.class.getMethods())
+                .map(Method::getName)
+                .anyMatch(name::equals);
     }
 
     private static final class TrackingNavigatablePsiElement extends FakePsiElement implements Navigatable {

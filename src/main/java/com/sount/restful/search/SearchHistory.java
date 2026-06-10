@@ -16,18 +16,19 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
     private static final Logger LOG = Logger.getInstance(SearchHistory.class);
     private static final Map<Project, SearchHistory> FALLBACK_INSTANCES =
             Collections.synchronizedMap(new WeakHashMap<>());
+    static final int MAX_TRACKED_ENTRIES = 200;
 
     private State myState = new State();
 
     public static class State {
         public List<String> recentQueries = new ArrayList<>();
         public List<String> favoriteEndpoints = new ArrayList<>();
-        public Map<String, Long> accessTimes = new HashMap<>();
-        public Map<String, String> selectedEndpointsByQuery = new HashMap<>();
-        public Map<String, Integer> selectedIndexByQuery = new HashMap<>();
-        public Map<String, Integer> firstVisibleIndexByQuery = new HashMap<>();
-        public Map<String, Integer> scrollYByQuery = new HashMap<>();
-        public Map<String, Integer> useCountByEndpoint = new HashMap<>();
+        public Map<String, Long> accessTimes = new LinkedHashMap<>();
+        public Map<String, String> selectedEndpointsByQuery = new LinkedHashMap<>();
+        public Map<String, Integer> selectedIndexByQuery = new LinkedHashMap<>();
+        public Map<String, Integer> firstVisibleIndexByQuery = new LinkedHashMap<>();
+        public Map<String, Integer> scrollYByQuery = new LinkedHashMap<>();
+        public Map<String, Integer> useCountByEndpoint = new LinkedHashMap<>();
     }
 
     public static SearchHistory getInstance(@NotNull Project project) {
@@ -49,16 +50,22 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         // PersistentStateComponent.loadState() is called on the EDT during project loading,
         // consistent with all other access to myState from UI event handlers.
         myState = state;
+        ensureState();
+        pruneState();
     }
 
     public void recordAccess(@NotNull RestServiceItem item) {
+        ensureState();
         String key = item.getEndpointKey();
         myState.accessTimes.put(key, System.currentTimeMillis());
+        pruneMap(myState.accessTimes);
         recordUse(item);
     }
 
     public void recordUse(@NotNull RestServiceItem item) {
+        ensureState();
         myState.useCountByEndpoint.merge(item.getEndpointKey(), 1, Integer::sum);
+        pruneMap(myState.useCountByEndpoint);
     }
 
     public int getUseCount(@NotNull RestServiceItem item) {
@@ -66,6 +73,7 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
     }
 
     public void recordQuery(@NotNull String query) {
+        ensureState();
         if (query.isBlank()) return;
         myState.recentQueries.remove(query);
         myState.recentQueries.addFirst(query);
@@ -75,9 +83,11 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
     }
 
     public void recordSelectedEndpoint(@NotNull String query, @NotNull RestServiceItem item) {
+        ensureState();
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return;
         myState.selectedEndpointsByQuery.put(normalizedQuery, item.getSearchSelectionKey());
+        pruneMap(myState.selectedEndpointsByQuery);
     }
 
     public @Nullable String getSelectedEndpointKey(@NotNull String query) {
@@ -87,16 +97,20 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
     }
 
     public void recordWindowState(@NotNull String query, int selectedIndex, int firstVisibleIndex, int scrollY) {
+        ensureState();
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return;
         if (selectedIndex >= 0) {
             myState.selectedIndexByQuery.put(normalizedQuery, selectedIndex);
+            pruneMap(myState.selectedIndexByQuery);
         }
         if (firstVisibleIndex >= 0) {
             myState.firstVisibleIndexByQuery.put(normalizedQuery, firstVisibleIndex);
+            pruneMap(myState.firstVisibleIndexByQuery);
         }
         if (scrollY >= 0) {
             myState.scrollYByQuery.put(normalizedQuery, scrollY);
+            pruneMap(myState.scrollYByQuery);
         }
     }
 
@@ -128,5 +142,46 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
 
     private static @NotNull String normalizeQuery(@NotNull String query) {
         return query.trim();
+    }
+
+    private void ensureState() {
+        if (myState.recentQueries == null) myState.recentQueries = new ArrayList<>();
+        if (myState.favoriteEndpoints == null) myState.favoriteEndpoints = new ArrayList<>();
+        myState.accessTimes = orderedMap(myState.accessTimes);
+        myState.selectedEndpointsByQuery = orderedMap(myState.selectedEndpointsByQuery);
+        myState.selectedIndexByQuery = orderedMap(myState.selectedIndexByQuery);
+        myState.firstVisibleIndexByQuery = orderedMap(myState.firstVisibleIndexByQuery);
+        myState.scrollYByQuery = orderedMap(myState.scrollYByQuery);
+        myState.useCountByEndpoint = orderedMap(myState.useCountByEndpoint);
+    }
+
+    private void pruneState() {
+        pruneMap(myState.accessTimes);
+        pruneMap(myState.selectedEndpointsByQuery);
+        pruneMap(myState.selectedIndexByQuery);
+        pruneMap(myState.firstVisibleIndexByQuery);
+        pruneMap(myState.scrollYByQuery);
+        pruneMap(myState.useCountByEndpoint);
+    }
+
+    private static <V> Map<String, V> orderedMap(@Nullable Map<String, V> map) {
+        if (map == null) {
+            return new LinkedHashMap<>();
+        }
+        if (map instanceof LinkedHashMap<String, V>) {
+            return map;
+        }
+        return new LinkedHashMap<>(map);
+    }
+
+    private static void pruneMap(@NotNull Map<?, ?> map) {
+        while (map.size() > MAX_TRACKED_ENTRIES) {
+            Iterator<?> iterator = map.keySet().iterator();
+            if (!iterator.hasNext()) {
+                return;
+            }
+            iterator.next();
+            iterator.remove();
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.sount.restful.search;
 
+import com.intellij.ui.Gray;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.SimpleTextAttributes;
@@ -25,7 +26,7 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
     private static final JBColor METHOD_COLOR_POST = new JBColor(new Color(0, 100, 200), new Color(80, 150, 230));
     private static final JBColor METHOD_COLOR_PUT = new JBColor(new Color(200, 130, 0), new Color(220, 170, 60));
     private static final JBColor METHOD_COLOR_DELETE = new JBColor(new Color(200, 50, 50), new Color(230, 90, 90));
-    private static final JBColor METHOD_COLOR_PATCH = new JBColor(new Color(130, 130, 130), new Color(160, 160, 160));
+    private static final JBColor METHOD_COLOR_PATCH = new JBColor(Gray._130, Gray._160);
 
     private static final JBColor METHOD_BG_GET = new JBColor(new Color(0xE6F4EA), new Color(0x1F4D2B));
     private static final JBColor METHOD_BG_POST = new JBColor(new Color(0xE8F0FE), new Color(0x1E3A5F));
@@ -55,7 +56,7 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
 
     public UnifiedSearchRenderer() {
         setLayout(new BorderLayout());
-        setBorder(JBUI.Borders.empty(4, 4));
+        setBorder(JBUI.Borders.empty(4));
 
         // Line 1: method icon + method text + URL + best match badge
         JPanel line1 = new JPanel(new BorderLayout(JBUI.scale(4), 0));
@@ -242,6 +243,13 @@ public class UnifiedSearchRenderer extends JPanel implements ListCellRenderer<Se
             sourceText = sourceText.isEmpty() ? "[" + moduleName + "]" : sourceText + " [" + moduleName + "]";
         }
         return sourceText;
+    }
+
+    private static String escapeHtml(String text) {
+        return "<html>" + text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;") + "</html>";
     }
 
     private static JBColor getMethodColor(HttpMethod method) {

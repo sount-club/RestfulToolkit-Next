@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class EndpointIndex implements Disposable {
     private static final Logger LOG = Logger.getInstance(EndpointIndex.class);
@@ -31,6 +32,7 @@ public class EndpointIndex implements Disposable {
     private volatile List<RestServiceItem> myItems = Collections.emptyList();
     private final AtomicBoolean myDirty = new AtomicBoolean(true);
     private final AtomicBoolean myRebuilding = new AtomicBoolean(false);
+    private final AtomicLong myDirtyGeneration = new AtomicLong();
     private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
     private final List<Runnable> myListeners = new CopyOnWriteArrayList<>();
 
@@ -57,7 +59,7 @@ public class EndpointIndex implements Disposable {
     }
 
     public List<RestServiceItem> getItems() {
-        if (myDirty.get() && myRebuilding.compareAndSet(false, true)) {
+        if (myDirty.get() && !myRebuilding.get()) {
             LOG.info("Endpoint index is dirty, scheduling rebuild...");
             retryCount = 0;
             scheduleRebuild();
@@ -70,7 +72,7 @@ public class EndpointIndex implements Disposable {
     }
 
     public void refresh() {
-        myDirty.set(true);
+        markDirtyForRebuild();
         retryCount = 0;
         scheduleRebuild();
     }
@@ -150,7 +152,7 @@ public class EndpointIndex implements Disposable {
             @Override
             public void rootsChanged(@NotNull ModuleRootEvent event) {
                 LOG.info("Project roots changed, scheduling endpoint index rebuild...");
-                myDirty.set(true);
+                markDirtyForRebuild();
                 notifyListeners();
                 debounceRebuild();
             }
@@ -160,7 +162,7 @@ public class EndpointIndex implements Disposable {
     private void registerIndexingListener() {
         DumbService.getInstance(myProject).runWhenSmart(() -> {
             LOG.info("Smart mode entered, triggering endpoint index rebuild for full multi-module coverage...");
-            myDirty.set(true);
+            markDirtyForRebuild();
             scheduleRebuild();
         });
     }
@@ -170,7 +172,7 @@ public class EndpointIndex implements Disposable {
         if (file == null || !file.isValid()) return;
 
         if (canAffectEndpointIndex(file)) {
-            myDirty.set(true);
+            markDirtyForRebuild();
             debounceRebuild();
         }
     }
@@ -194,7 +196,10 @@ public class EndpointIndex implements Disposable {
 
     private void doRebuild() {
         if (!myProject.isOpen() || myProject.isDisposed()) return;
-        myRebuilding.set(true);
+        if (!myRebuilding.compareAndSet(false, true)) {
+            return;
+        }
+        long generation = currentDirtyGeneration();
 
         LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount + 1) + ")");
         long startTime = System.nanoTime();
@@ -213,6 +218,13 @@ public class EndpointIndex implements Disposable {
         .expireWith(this)
         .finishOnUiThread(ModalityState.defaultModalityState(), items -> {
             long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+
+            if (isStaleRebuild(generation)) {
+                myRebuilding.set(false);
+                LOG.debug("Endpoint index rebuild result is stale; scheduling a fresh rebuild");
+                scheduleRebuild();
+                return;
+            }
 
             if (items == null) {
                 // Error case: items is null means exception was caught inside the task
@@ -241,6 +253,19 @@ public class EndpointIndex implements Disposable {
             notifyListeners();
         })
         .submit(AppExecutorUtil.getAppExecutorService());
+    }
+
+    void markDirtyForRebuild() {
+        myDirty.set(true);
+        myDirtyGeneration.incrementAndGet();
+    }
+
+    long currentDirtyGeneration() {
+        return myDirtyGeneration.get();
+    }
+
+    boolean isStaleRebuild(long generation) {
+        return generation != currentDirtyGeneration();
     }
 
     private void notifyListeners() {

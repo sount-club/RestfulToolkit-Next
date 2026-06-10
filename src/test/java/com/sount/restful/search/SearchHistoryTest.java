@@ -42,7 +42,33 @@ public class SearchHistoryTest extends BasePlatformTestCase {
         assertNull(history.getSelectedIndex("/other"));
     }
 
+    public void testPersistentMapsArePrunedToBoundedSize() {
+        SearchHistory history = new SearchHistory();
+        PsiMethod method = createMethod();
+
+        for (int i = 0; i < SearchHistory.MAX_TRACKED_ENTRIES + 25; i++) {
+            RestServiceItem item = new RestServiceItem(method, "GET", "/activity/" + i);
+            history.recordAccess(item);
+            history.recordSelectedEndpoint("query-" + i, item);
+            history.recordWindowState("query-" + i, i, i, i);
+        }
+
+        SearchHistory.State state = history.getState();
+        assertTrue(state.accessTimes.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertTrue(state.useCountByEndpoint.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertTrue(state.selectedEndpointsByQuery.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertTrue(state.selectedIndexByQuery.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertTrue(state.firstVisibleIndexByQuery.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertTrue(state.scrollYByQuery.size() <= SearchHistory.MAX_TRACKED_ENTRIES);
+        assertNull(history.getSelectedEndpointKey("query-0"));
+        assertNull(history.getSelectedIndex("query-0"));
+    }
+
     private RestServiceItem createItem(String methodText, String url) {
+        return new RestServiceItem(createMethod(), methodText, url);
+    }
+
+    private PsiMethod createMethod() {
         PsiJavaFile javaFile = (PsiJavaFile) myFixture.configureByText("ActivityAction.java", """
                 package demo;
 
@@ -51,7 +77,6 @@ public class SearchHistoryTest extends BasePlatformTestCase {
                 }
                 """);
         PsiClass psiClass = javaFile.getClasses()[0];
-        PsiMethod method = psiClass.findMethodsByName("rewardDetail", false)[0];
-        return new RestServiceItem(method, methodText, url);
+        return psiClass.findMethodsByName("rewardDetail", false)[0];
     }
 }

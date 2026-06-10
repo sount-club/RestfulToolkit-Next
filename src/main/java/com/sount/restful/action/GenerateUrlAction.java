@@ -12,13 +12,13 @@ import com.sount.restful.annotations.JaxrsHttpMethodAnnotation;
 import com.sount.restful.annotations.JaxrsRequestAnnotation;
 import com.sount.restful.annotations.SpringControllerAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
+import com.sount.restful.common.PsiAnnotationHelper;
 import com.sount.restful.common.PsiMethodHelper;
 import com.sount.restful.utils.RestfulToolkitBundle;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.datatransfer.StringSelection;
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * 生成并复制相对路径 URL（不含 host 和 port，含查询参数）。
@@ -40,6 +40,9 @@ public class GenerateUrlAction extends AbstractBaseAction {
         } else {
             servicePath = PsiMethodHelper.create(psiMethod).buildServiceUriPathWithParams();
         }
+        if (servicePath == null) {
+            return;
+        }
 
         CopyPasteManager.getInstance().setContents(new StringSelection(servicePath));
         showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), myEditor);
@@ -50,7 +53,7 @@ public class GenerateUrlAction extends AbstractBaseAction {
         for (PsiAnnotation annotation : annotations) {
             boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values())
                     .map(JaxrsHttpMethodAnnotation::getQualifiedName)
-                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+                    .anyMatch(name -> PsiAnnotationHelper.hasQualifiedName(annotation, name));
             if (match) return true;
         }
         return false;
@@ -60,16 +63,17 @@ public class GenerateUrlAction extends AbstractBaseAction {
     public void update(@NotNull AnActionEvent e) {
         PsiMethod psiMethod = findTargetMethod(e);
         boolean visible = psiMethod != null &&
-                (isRestController(Objects.requireNonNull(psiMethod.getContainingClass())) || isRestfulMethod(psiMethod));
+                (isRestController(psiMethod.getContainingClass()) || isRestfulMethod(psiMethod));
         setActionPresentationVisible(e, visible);
     }
 
     private boolean isRestController(PsiClass containingClass) {
+        if (containingClass == null) return false;
         PsiModifierList modifierList = containingClass.getModifierList();
         if (modifierList == null) return false;
-        return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(JaxrsRequestAnnotation.PATH.getQualifiedName()) != null;
+        return PsiAnnotationHelper.findAnnotation(modifierList, SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
+                PsiAnnotationHelper.findAnnotation(modifierList, SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null ||
+                PsiAnnotationHelper.findAnnotation(modifierList, JaxrsRequestAnnotation.PATH.getQualifiedName()) != null;
     }
 
     private boolean isRestfulMethod(PsiMethod psiMethod) {
@@ -77,13 +81,13 @@ public class GenerateUrlAction extends AbstractBaseAction {
         for (PsiAnnotation annotation : annotations) {
             boolean match = Arrays.stream(SpringRequestMethodAnnotation.values())
                     .map(SpringRequestMethodAnnotation::getQualifiedName)
-                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+                    .anyMatch(name -> PsiAnnotationHelper.hasQualifiedName(annotation, name));
             if (match) return true;
         }
         for (PsiAnnotation annotation : annotations) {
             boolean match = Arrays.stream(JaxrsHttpMethodAnnotation.values())
                     .map(JaxrsHttpMethodAnnotation::getQualifiedName)
-                    .anyMatch(name -> name.equals(annotation.getQualifiedName()));
+                    .anyMatch(name -> PsiAnnotationHelper.hasQualifiedName(annotation, name));
             if (match) return true;
         }
         return false;

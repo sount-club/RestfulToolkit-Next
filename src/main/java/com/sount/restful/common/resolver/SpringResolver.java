@@ -61,13 +61,29 @@ public class SpringResolver extends BaseServiceResolver {
     protected List<RestServiceItem> getServiceItemList(PsiClass psiClass) {
 
         List<RestServiceItem> itemList = new ArrayList<>();
-        List<RequestPath> classRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiClass);
+        List<RequestPath> classRequestPaths;
+        try {
+            classRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiClass);
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (Throwable e) {
+            LOG.debug("Failed to resolve class request mappings", e);
+            return itemList;
+        }
         if (classRequestPaths == null || classRequestPaths.isEmpty()) {
             return itemList;
         }
 
         for (PsiMethod psiMethod : getClassMethodsIncludingParents(psiClass)) {
-            RequestPath[] methodRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiMethod);
+            RequestPath[] methodRequestPaths;
+            try {
+                methodRequestPaths = RequestMappingAnnotationHelper.getRequestPaths(psiMethod);
+            } catch (ProcessCanceledException e) {
+                throw e;
+            } catch (Throwable e) {
+                LOG.debug("Failed to resolve method request mappings", e);
+                continue;
+            }
             if (isEmpty(methodRequestPaths)) {
                 continue;
             }

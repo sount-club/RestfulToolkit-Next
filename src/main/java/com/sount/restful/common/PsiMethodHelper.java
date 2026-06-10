@@ -8,8 +8,8 @@ import com.sount.restful.annotations.JaxrsRequestAnnotation;
 import com.sount.restful.annotations.SpringControllerAnnotation;
 import com.sount.restful.common.jaxrs.JaxrsAnnotationHelper;
 import com.sount.restful.common.spring.RequestMappingAnnotationHelper;
-import com.sount.restful.method.Parameter;
 import com.sount.restful.method.ModuleHelper;
+import com.sount.restful.method.Parameter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -137,20 +137,20 @@ public class PsiMethodHelper {
                 continue;
             //必传参数 @RequestParam
             PsiModifierList modifierList = psiParameter.getModifierList();
-            boolean requestBodyFound = modifierList.findAnnotation(REQUEST_BODY.getQualifiedName()) != null;
+            boolean requestBodyFound = PsiAnnotationHelper.findAnnotation(modifierList, REQUEST_BODY.getQualifiedName()) != null;
             // 没有 RequestParam 注解, 有注解使用注解value
             String paramName = psiParameter.getName();
             String requestName = null;
 
 
-            PsiAnnotation pathVariableAnno = modifierList.findAnnotation(PATH_VARIABLE.getQualifiedName());
+            PsiAnnotation pathVariableAnno = PsiAnnotationHelper.findAnnotation(modifierList, PATH_VARIABLE.getQualifiedName());
             if (pathVariableAnno != null) {
                 requestName = getAnnotationValue(pathVariableAnno);
                 Parameter parameter = new Parameter(paramType, requestName != null ? requestName : paramName).setRequired(true).requestBodyFound(requestBodyFound);
                 parameterList.add(parameter);
             }
 
-            PsiAnnotation requestParamAnno = modifierList.findAnnotation(REQUEST_PARAM.getQualifiedName());
+            PsiAnnotation requestParamAnno = PsiAnnotationHelper.findAnnotation(modifierList, REQUEST_PARAM.getQualifiedName());
             if (requestParamAnno != null) {
                 requestName = getAnnotationValue(requestParamAnno);
                 Parameter parameter = new Parameter(paramType, requestName != null ? requestName : paramName).setRequired(true).requestBodyFound(requestBodyFound);
@@ -174,7 +174,7 @@ public class PsiMethodHelper {
         if (containingClass == null || containingClass.getModifierList() == null) {
             return false;
         }
-        if (containingClass.getModifierList().findAnnotation(REST_CONTROLLER.getQualifiedName()) == null) {
+        if (PsiAnnotationHelper.findAnnotation(containingClass.getModifierList(), REST_CONTROLLER.getQualifiedName()) == null) {
             return false;
         }
 
@@ -220,9 +220,6 @@ public class PsiMethodHelper {
 
     /**
      * 构建RequestBody json 参数
-     *
-     * @param parameter
-     * @return
      */
     public String buildRequestBodyJson(Parameter parameter) {
 //        JavaFullClassNameIndex.getInstance();
@@ -244,14 +241,13 @@ public class PsiMethodHelper {
         return null;
     }
 
-    @NotNull
+    @Nullable
     public String buildServiceUriPath() {
         String ctrlPath = null;
         String methodPath = null;
 
         //判断rest服务提供方式 spring or jaxrs
         PsiClass containingClass = psiMethod.getContainingClass();
-        RestSupportedAnnotationHelper annotationHelper;
         if (isSpringRestSupported(containingClass)) {
             ctrlPath = RequestMappingAnnotationHelper.getOneRequestMappingPath(containingClass);
             methodPath = RequestMappingAnnotationHelper.getOneRequestMappingPath(psiMethod);
@@ -280,9 +276,12 @@ public class PsiMethodHelper {
         return ctrlPath + methodPath;
     }
 
-    @NotNull
+    @Nullable
     public String buildServiceUriPathWithParams() {
         String serviceUriPath = buildServiceUriPath();
+        if (serviceUriPath == null) {
+            return null;
+        }
 
         String params = PsiMethodHelper.create(psiMethod).buildParamString();
         // RequestMapping 注解设置了 param
@@ -294,25 +293,40 @@ public class PsiMethodHelper {
 
     //包含 "RestController" "Controller"
     public static boolean isSpringRestSupported(PsiClass containingClass) {
+        if (containingClass == null) {
+            return false;
+        }
         PsiModifierList modifierList = containingClass.getModifierList();
+        if (modifierList == null) {
+            return false;
+        }
 
-        return modifierList.findAnnotation(SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
-                modifierList.findAnnotation(SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null;
+        return PsiAnnotationHelper.findAnnotation(modifierList, SpringControllerAnnotation.REST_CONTROLLER.getQualifiedName()) != null ||
+                PsiAnnotationHelper.findAnnotation(modifierList, SpringControllerAnnotation.CONTROLLER.getQualifiedName()) != null;
     }
 
     //包含 "RestController" "Controller"
     public static boolean isJaxrsRestSupported(PsiClass containingClass) {
+        if (containingClass == null) {
+            return false;
+        }
         PsiModifierList modifierList = containingClass.getModifierList();
+        if (modifierList == null) {
+            return false;
+        }
 
-        return modifierList.findAnnotation(JaxrsRequestAnnotation.PATH.getQualifiedName()) != null;
+        return PsiAnnotationHelper.findAnnotation(modifierList, JaxrsRequestAnnotation.PATH.getQualifiedName()) != null;
     }
 
 
     /* 生成完整 URL , 附带参数 */
-    @NotNull
+    @Nullable
     public String buildFullUrlWithParams() {
 
         String fullUrl = buildFullUrl();
+        if (fullUrl == null) {
+            return null;
+        }
 
         String params = buildParamString();
 
@@ -324,12 +338,15 @@ public class PsiMethodHelper {
         return fullUrl;
     }
 
-    @NotNull
+    @Nullable
     public String buildFullUrl() {
 
         String hostUri = myModule != null ? ModuleHelper.create(myModule).getServiceHostPrefix() : ModuleHelper.DEFAULT_URI;
 
         String servicePath = buildServiceUriPath();
+        if (servicePath == null) {
+            return null;
+        }
 
         return hostUri.concat(servicePath);
     }
