@@ -73,8 +73,12 @@ public class Parameter {  // MethodParameter
     }
 
     public String getShortTypeName() {
-        //todo : List
-        return paramType.substring(paramType.lastIndexOf(".") + 1);
+        String rawType = paramType;
+        int genericStart = rawType.indexOf('<');
+        if (genericStart >= 0) {
+            rawType = rawType.substring(0, genericStart);
+        }
+        return rawType.substring(rawType.lastIndexOf(".") + 1);
     }
 
 

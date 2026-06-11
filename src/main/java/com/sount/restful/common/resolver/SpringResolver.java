@@ -46,13 +46,14 @@ public class SpringResolver extends BaseServiceResolver {
         Set<KtClass> processedKtClasses = new HashSet<>();
         SpringJavaEndpointResolver javaResolver = new SpringJavaEndpointResolver(this);
         SpringKotlinEndpointResolver kotlinResolver = new SpringKotlinEndpointResolver(this);
+        SpringWebFluxRouterFunctionResolver webFluxRouterFunctionResolver = new SpringWebFluxRouterFunctionResolver(this);
 
-        // TODO: 这种实现的局限了其他方式实现的url映射（xml（类似struts），webflux routers）
         SpringControllerAnnotation[] supportedAnnotations = SpringControllerAnnotation.values();
         for (PathMappingAnnotation controllerAnnotation : supportedAnnotations) {
             itemList.addAll(javaResolver.collect(controllerAnnotation, project, globalSearchScope, processedJavaClasses));
             itemList.addAll(kotlinResolver.collect(controllerAnnotation, project, globalSearchScope, processedKtClasses));
         }
+        itemList.addAll(webFluxRouterFunctionResolver.collect(project, globalSearchScope));
 
         LOG.info("SpringResolver found " + itemList.size() + " endpoints");
         return itemList;

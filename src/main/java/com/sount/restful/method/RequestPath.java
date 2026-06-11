@@ -26,14 +26,20 @@ public class RequestPath {
     }
 
     public void concat(RequestPath classRequestPath) {
-        String classUri = classRequestPath.getPath();
-        String methodUri = this.path;
-        //TODO
+        String classUri = normalizeClassPath(classRequestPath.getPath());
+        String methodUri = normalizeMethodPath(this.path);
+
+        this.path = classUri.concat(methodUri);
+    }
+
+    private static String normalizeClassPath(String classUri) {
         if (!classUri.startsWith("/")) classUri = "/".concat(classUri);
         if (!classUri.endsWith("/")) classUri = classUri.concat("/");
-        if (this.path.startsWith("/")) methodUri = this.path.substring(1, this.path.length());
+        return classUri;
+    }
 
-        this.path = classUri.concat(methodUri) ;
-//        method
+    private static String normalizeMethodPath(String methodUri) {
+        if (methodUri.startsWith("/")) return methodUri.substring(1);
+        return methodUri;
     }
 }

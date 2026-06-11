@@ -223,4 +223,59 @@ public class SpringResolverTest extends BasePlatformTestCase {
                 .orElseThrow();
         assertTrue(endpoint.getPsiElement() instanceof KtNamedFunction);
     }
+
+    public void testFindWebFluxRouterFunctionEndpoints() {
+        myFixture.configureByText("RouterFunctions.java", """
+                package org.springframework.web.reactive.function.server;
+                public class RouterFunctions {
+                    public static RouterFunction route(RequestPredicate predicate, Object handler) { return null; }
+                }
+                """);
+        myFixture.configureByText("RouterFunction.java", """
+                package org.springframework.web.reactive.function.server;
+                public interface RouterFunction {
+                    RouterFunction andRoute(RequestPredicate predicate, Object handler);
+                }
+                """);
+        myFixture.configureByText("RequestPredicate.java", """
+                package org.springframework.web.reactive.function.server;
+                public interface RequestPredicate {}
+                """);
+        myFixture.configureByText("RequestPredicates.java", """
+                package org.springframework.web.reactive.function.server;
+                public class RequestPredicates {
+                    public static RequestPredicate GET(String path) { return null; }
+                    public static RequestPredicate POST(String path) { return null; }
+                }
+                """);
+        myFixture.configureByText("Routes.java", """
+                package demo;
+
+                import org.springframework.web.reactive.function.server.RouterFunction;
+                import org.springframework.web.reactive.function.server.RouterFunctions;
+
+                import static org.springframework.web.reactive.function.server.RequestPredicates.GET;
+                import static org.springframework.web.reactive.function.server.RequestPredicates.POST;
+
+                class StoreHandler {
+                    Object list(Object request) { return null; }
+                    Object create(Object request) { return null; }
+                }
+
+                class Routes {
+                    RouterFunction routes(StoreHandler handler) {
+                        return RouterFunctions.route(GET("/stores"), handler::list)
+                                .andRoute(POST("/stores"), handler::create);
+                    }
+                }
+                """);
+
+        List<RestServiceItem> endpoints = BaseServiceResolver.findAllEndpoints(getProject());
+
+        assertEquals(2, endpoints.size());
+        List<String> urls = endpoints.stream().map(RestServiceItem::getUrl).toList();
+        assertTrue(urls.contains("/stores"));
+        assertEquals(1, endpoints.stream().filter(item -> "GET".equals(item.getMethodText())).count());
+        assertEquals(1, endpoints.stream().filter(item -> "POST".equals(item.getMethodText())).count());
+    }
 }

@@ -77,9 +77,7 @@ public class PsiMethodHelper {
                 continue;
             }
 
-            // todo 判断类型
-            // 8 PsiPrimitiveType
-            // 8 boxed types; String,Date:PsiClassReferenceType == field.getType().getPresentableText()
+            // Primitive, boxed, string, date/time, and simple POJO fields are expanded as query parameters.
             String shortTypeName = parameter.getShortTypeName();
             Object defaultValue = PsiClassHelper.getJavaBaseTypeDefaultValue(shortTypeName);
             //简单常用类型

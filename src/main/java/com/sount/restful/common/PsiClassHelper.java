@@ -10,17 +10,15 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.math.BigDecimal;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 // 处理 实体自关联，第二层自关联字段
 public class PsiClassHelper {
     private static final Gson GSON_PRETTY = new GsonBuilder().setPrettyPrinting().create();
     private static final Gson GSON_COMPACT = new GsonBuilder().create();
+    private static final Map<String, Object> JAVA_BASE_TYPE_DEFAULT_VALUES = createJavaBaseTypeDefaultValues();
 
     PsiClass psiClass;
-
-    private int autoCorrelationCount = 0; //标记实体递归
 
     protected PsiClassHelper(@NotNull PsiClass psiClass) {
         this.psiClass = psiClass;
@@ -63,84 +61,40 @@ public class PsiClassHelper {
 
     @Nullable
     public static Object getJavaBaseTypeDefaultValue(String paramType) {
-        Object paramValue = null;
-//        todo: using map later
-        switch (paramType.toLowerCase()) {
-            case "byte":
-                paramValue = Byte.valueOf("1");
-                break;
-            case "char", "character":
-                paramValue = 'Z';
-                break;
-            case "boolean":
-                paramValue = Boolean.TRUE;
-                break;
-            case "int", "integer":
-                paramValue = 1;
-                break;
-            case "double":
-                paramValue = 1.0;
-                break;
-            case "float":
-                paramValue = 1.0F;
-                break;
-            case "long":
-                paramValue = 1L;
-                break;
-            case "short":
-                paramValue = Short.valueOf("1");
-                break;
-            case "bigdecimal":
-                return BigDecimal.ONE;
-            case "string":
-                paramValue = "demoData";
-                break;
-            case "date", "localdatetime":
-                paramValue = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-                break; // todo: format date
-//            default: paramValue = paramType;
+        if (paramType == null) {
+            return null;
         }
-        return paramValue;
+        return JAVA_BASE_TYPE_DEFAULT_VALUES.get(toShortTypeName(paramType).toLowerCase(Locale.ROOT));
     }
 
-
-    private boolean isJavaBaseType(String typeName) {
-        return getJavaBaseTypeDefaultValue(typeName) != null;
+    private static Map<String, Object> createJavaBaseTypeDefaultValues() {
+        Map<String, Object> defaults = new HashMap<>();
+        defaults.put("byte", Byte.valueOf("1"));
+        defaults.put("char", 'Z');
+        defaults.put("character", 'Z');
+        defaults.put("boolean", Boolean.TRUE);
+        defaults.put("int", 1);
+        defaults.put("integer", 1);
+        defaults.put("double", 1.0);
+        defaults.put("float", 1.0F);
+        defaults.put("long", 1L);
+        defaults.put("short", Short.valueOf("1"));
+        defaults.put("bigdecimal", BigDecimal.ONE);
+        defaults.put("string", "demoData");
+        defaults.put("date", "2024-01-01 12:00:00");
+        defaults.put("localdate", "2024-01-01");
+        defaults.put("localtime", "12:00:00");
+        defaults.put("localdatetime", "2024-01-01T12:00:00");
+        return Collections.unmodifiableMap(defaults);
     }
 
-    private Object setFieldDefaultValue(PsiType psiFieldType, Project project) {
-        String typeName = psiFieldType.getPresentableText();
-        Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(typeName);
-        if (baseTypeDefaultValue != null) {
-            return baseTypeDefaultValue;
+    private static String toShortTypeName(String typeName) {
+        String rawType = typeName;
+        int genericStart = rawType.indexOf('<');
+        if (genericStart >= 0) {
+            rawType = rawType.substring(0, genericStart);
         }
-
-        if (psiFieldType instanceof PsiClassReferenceType) {
-            String className = ((PsiClassReferenceType) psiFieldType).getClassName();
-            if (className.equalsIgnoreCase("List") || className.equalsIgnoreCase("ArrayList")) {
-                return handleListParam(psiFieldType, project);
-            }
-
-            Objects.requireNonNull(((PsiClassReferenceType) psiFieldType).resolve()).getFields(); // if is Enum
-
-            String fullName = psiFieldType.getCanonicalText();
-            PsiClass fieldClass = findOnePsiClassByClassName(fullName, project);
-
-            // 处理递归
-            if (fieldClass != null) {
-//                todo: 处理递归问题 autoCorrelationCount
-                if (autoCorrelationCount > 0) return new HashMap<>();
-                if (fullName.equals(fieldClass.getQualifiedName())) {
-                    autoCorrelationCount++;
-                }
-
-                return assembleClassToMap(fieldClass, project);
-            }
-        }
-
-        // 处理自关联 List<T> = T 两级，只处理一次, break
-
-        return typeName;
+        return rawType.substring(rawType.lastIndexOf('.') + 1);
     }
 
 
@@ -166,130 +120,88 @@ public class PsiClassHelper {
     }
 
     public Map<String, Object> assembleClassToMap(PsiClass psiClass, Project project, int recursiveCount) {
-
         Map<String, Object> map = new LinkedHashMap<>();
-        PsiField[] fields = psiClass.getFields();
-        for (PsiField field : fields) {
-            PsiType psiFieldType = field.getType();
-            String typeName = psiFieldType.getPresentableText();
-
-            String fieldName = field.getName();
-
-//            common base type
-            if (isJavaBaseType(typeName)) {
-                map.put(fieldName, getJavaBaseTypeDefaultValue(typeName));
-                continue;
-            }
-
-            if (psiFieldType instanceof PsiArrayType) {
-                PsiType psiType = ((PsiArrayType) psiFieldType).getComponentType();
-
-                Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(psiType.getPresentableText());
-                if (baseTypeDefaultValue != null) {
-                    List<Object> objects = new ArrayList<>();
-                    objects.add(baseTypeDefaultValue);
-                    map.put(fieldName, objects);
-                }
-
-                continue;
-            }
-
-            PsiClass resolveClass = ((PsiClassReferenceType) psiFieldType).resolve();
-            if (isEnum(psiFieldType)) {
-                PsiField psiField = Objects.requireNonNull(resolveClass).getFields()[0];
-                map.put(fieldName, psiField.getName());
-                continue;
-            }
-
-//            self recursion
-            if (Objects.equals(Objects.requireNonNull(resolveClass).getQualifiedName(), psiClass.getQualifiedName())) {
-                if (recursiveCount > 0) {
-                    Map<String, Object> objectMap = assembleClassToMap(resolveClass, project, 0);
-                    map.put(fieldName, objectMap);
-                    continue;
-                }
-            }
-
-//            recursive
-
-            if (isListFieldType(psiFieldType)) {
-                PsiType[] parameters = ((PsiClassReferenceType) psiFieldType).getParameters();
-                if (parameters.length > 0) {
-                    PsiType parameter = parameters[0];
-// 自关联
-                    if (recursiveCount <= 0) {
-                        continue;
-                    }
-
-                    if (parameter.getPresentableText().equals(psiClass.getName())) {
-                        Map<String, Object> objectMap = assembleClassToMap(psiClass, project, 0);
-                        map.put(fieldName, objectMap);
-                        continue;
-                    }
-
-                    Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(parameter.getPresentableText());
-                    if (baseTypeDefaultValue != null) {
-                        List<Object> objects = new ArrayList<>();
-                        objects.add(baseTypeDefaultValue);
-                        map.put(fieldName, objects);
-                        continue;
-                    }
-
-                    // TODO TODO TODO .................
-                    if (parameter instanceof PsiClassReferenceType) {
-                        if (parameter.getPresentableText().contains("<")) {
-                            continue;
-                        }
-                        PsiClass onePsiClassByClassName = findOnePsiClassByClassName(parameter.getCanonicalText(), project);
-
-                        Map<String, Object> objectMap = assembleClassToMap(Objects.requireNonNull(onePsiClassByClassName), project, 0);
-                        map.put(fieldName, objectMap);
-                    }
-                }
-
-            }
+        for (PsiField field : psiClass.getFields()) {
+            Object value = buildFieldValue(field.getType(), project, psiClass, recursiveCount);
+            map.put(field.getName(), value);
         }
-
         return map;
     }
 
-
-    private static boolean isListFieldType(PsiType psiFieldType) {
-        if (!(psiFieldType instanceof PsiClassReferenceType)) {
-            return false;
+    private Object buildFieldValue(PsiType fieldType, Project project, PsiClass ownerClass, int recursiveCount) {
+        Object baseTypeDefaultValue = getJavaBaseTypeDefaultValue(fieldType.getPresentableText());
+        if (baseTypeDefaultValue != null) {
+            return baseTypeDefaultValue;
         }
 
-        PsiClass resolvePsiClass = ((PsiClassReferenceType) psiFieldType).resolve();
-        if (Objects.equals(Objects.requireNonNull(resolvePsiClass).getQualifiedName(), "java.util.List")) {
+        if (fieldType instanceof PsiArrayType arrayType) {
+            return buildListValue(arrayType.getComponentType(), project, ownerClass, recursiveCount);
+        }
+
+        if (!(fieldType instanceof PsiClassReferenceType referenceType)) {
+            return fieldType.getPresentableText();
+        }
+
+        if (isListFieldType(referenceType)) {
+            PsiType[] parameters = referenceType.getParameters();
+            return parameters.length > 0
+                    ? buildListValue(parameters[0], project, ownerClass, recursiveCount)
+                    : new ArrayList<>();
+        }
+
+        PsiClass resolvedClass = referenceType.resolve();
+        if (resolvedClass == null) {
+            return fieldType.getPresentableText();
+        }
+
+        if (resolvedClass.isEnum()) {
+            PsiField[] enumFields = resolvedClass.getFields();
+            return enumFields.length > 0 ? enumFields[0].getName() : fieldType.getPresentableText();
+        }
+
+        if (Objects.equals(resolvedClass.getQualifiedName(), ownerClass.getQualifiedName())) {
+            if (recursiveCount <= 0) {
+                return new LinkedHashMap<>();
+            }
+            return assembleClassToMap(resolvedClass, project, recursiveCount - 1);
+        }
+
+        return assembleClassToMap(resolvedClass, project, Math.max(0, recursiveCount - 1));
+    }
+
+    private Object buildListValue(PsiType elementType, Project project, PsiClass ownerClass, int recursiveCount) {
+        List<Object> list = new ArrayList<>();
+        Object elementValue = buildFieldValue(elementType, project, ownerClass, Math.max(0, recursiveCount - 1));
+        list.add(elementValue);
+        return list;
+    }
+
+
+    private static boolean isListFieldType(PsiClassReferenceType psiFieldType) {
+        String className = psiFieldType.getClassName();
+        if ("List".equals(className) || "ArrayList".equals(className)) {
+            return true;
+        }
+        String canonicalText = psiFieldType.rawType().getCanonicalText();
+        if ("java.util.List".equals(canonicalText) || "java.util.ArrayList".equals(canonicalText)) {
             return true;
         }
 
-        for (PsiType psiType : ((PsiClassReferenceType) psiFieldType).rawType().getSuperTypes()) {
+        PsiClass resolvePsiClass = psiFieldType.resolve();
+        if (resolvePsiClass == null) {
+            return false;
+        }
+        if (Objects.equals(resolvePsiClass.getQualifiedName(), "java.util.List")) {
+            return true;
+        }
+
+        for (PsiType psiType : psiFieldType.rawType().getSuperTypes()) {
             if (psiType.getCanonicalText().equals("java.util.List")) {
                 return true;
             }
         }
 
         return false;
-    }
-
-    /* 字段是否为List 类型*/
-    private static boolean isEnum(PsiType psiFieldType) {
-        if (!(psiFieldType instanceof PsiClassReferenceType)) {
-            return false;
-        }
-        return Objects.requireNonNull(((PsiClassReferenceType) psiFieldType).resolve()).isEnum();
-    }
-
-
-    private Object handleListParam(PsiType psiType, Project project) {
-        List<Object> list = new ArrayList<>();
-        PsiClassType classType = (PsiClassType) psiType;
-        PsiType[] subTypes = classType.getParameters();
-        if (subTypes.length > 0) {
-            list.add(setFieldDefaultValue(subTypes[0], project));
-        }
-        return list;
     }
 
 
