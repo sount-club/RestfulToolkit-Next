@@ -10,52 +10,23 @@ import org.apache.commons.lang3.StringUtils;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.Set;
 
-public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHelper {
+public final class RequestMappingAnnotationHelper implements RestSupportedAnnotationHelper {
 
-    /**
-     * 过滤所有注解
-     */
-    public static List<RequestPath> getRequestPaths(PsiClass psiClass) {
-        List<RequestPath> list = new ArrayList<>();
-        if (psiClass.getModifierList() == null) {
-            return list;
-        }
-
-        PsiAnnotation[] annotations = psiClass.getModifierList().getAnnotations();
-
-        PsiAnnotation requestMappingAnnotation = getPsiAnnotation(annotations);
-
-        if (requestMappingAnnotation != null) {
-            List<RequestPath> requestMappings = getRequestMappings(requestMappingAnnotation, "");
-            if (!requestMappings.isEmpty()) {
-                list.addAll(requestMappings);
-            }
-        } else {
-            // TODO : 继承 RequestMapping
-            PsiClass superClass = psiClass.getSuperClass();
-            if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
-                list = getRequestPaths(superClass);
-            } else {
-                list.add(new RequestPath("/", null));
-            }
-
-        }
-
-        return list;
+    private RequestMappingAnnotationHelper() {
     }
 
-    private static @Nullable PsiAnnotation getPsiAnnotation(PsiAnnotation[] annotations) {
-        PsiAnnotation requestMappingAnnotation = null;
-        for (PsiAnnotation annotation : annotations) {
-            if (isSupportedRequestMappingAnnotation(annotation)) {
-                requestMappingAnnotation = annotation;
-            }
+    public static List<RequestPath> getRequestPaths(PsiClass psiClass) {
+        List<RequestPath> requestPaths = collectClassRequestPaths(psiClass, new HashSet<>());
+        if (requestPaths.isEmpty()) {
+            requestPaths.add(new RequestPath("/", null));
         }
-        return requestMappingAnnotation;
+        return requestPaths;
     }
 
     static boolean isSupportedRequestMappingAnnotation(PsiAnnotation annotation) {
@@ -72,8 +43,6 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
     }
 
     private static List<RequestPath> getRequestMappings(PsiAnnotation annotation, String defaultValue) {
-        List<RequestPath> mappingList = new ArrayList<>();
-
         SpringRequestMethodAnnotation requestAnnotation = SpringRequestMethodAnnotation.getByQualifiedName(
                 PsiAnnotationHelper.getQualifiedName(annotation));
 
@@ -88,18 +57,17 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
             methodList = PsiAnnotationHelper.getAnnotationAttributeValues(annotation, "method");
         }
 
-        List<String> pathList = PsiAnnotationHelper.getAnnotationAttributeValues(annotation, "value");
+        List<String> pathList = getPathAttributeValues(annotation);
+
         if (pathList.isEmpty()) {
-            pathList = PsiAnnotationHelper.getAnnotationAttributeValues(annotation, "path");
+            pathList = List.of(defaultValue);
         }
 
-        // 没有设置 value，默认方法名
-        if (pathList.isEmpty()) {
-            pathList.add(defaultValue);
-        }
+        return buildRequestPaths(methodList, pathList);
+    }
 
-        // todo: 处理没有设置 value 或 path 的 RequestMapping
-
+    private static List<RequestPath> buildRequestPaths(List<String> methodList, List<String> pathList) {
+        List<RequestPath> mappingList = new ArrayList<>();
         if (!methodList.isEmpty()) {
             for (String method : methodList) {
                 for (String path : pathList) {
@@ -111,108 +79,105 @@ public class RequestMappingAnnotationHelper implements RestSupportedAnnotationHe
                 mappingList.add(new RequestPath(path, null));
             }
         }
-
         return mappingList;
     }
 
-    /**
-     * 过滤所有注解
-     */
     public static RequestPath[] getRequestPaths(PsiMethod psiMethod) {
-        psiMethod.getModifierList();
+        return collectMethodRequestPaths(psiMethod, new HashSet<>()).toArray(new RequestPath[0]);
+    }
 
-        PsiAnnotation[] annotations = psiMethod.getModifierList().getAnnotations();
-        List<RequestPath> list = new ArrayList<>();
+    private static List<RequestPath> collectClassRequestPaths(PsiClass psiClass, Set<PsiClass> visitedClasses) {
+        if (psiClass == null || !visitedClasses.add(psiClass)) {
+            return new ArrayList<>();
+        }
 
-        for (PsiAnnotation annotation : annotations) {
-            if (isSupportedRequestMappingAnnotation(annotation)) {
-                String defaultValue = "/";
-                List<RequestPath> requestMappings = getRequestMappings(annotation, defaultValue);
-                if (!requestMappings.isEmpty()) {
-                    list.addAll(requestMappings);
-                }
+        List<RequestPath> ownRequestPaths = getRequestPathsFromModifierList(psiClass.getModifierList(), "");
+        if (!ownRequestPaths.isEmpty()) {
+            return ownRequestPaths;
+        }
+
+        PsiClass superClass = psiClass.getSuperClass();
+        if (superClass != null && !CommonClassNames.JAVA_LANG_OBJECT.equals(superClass.getQualifiedName())) {
+            List<RequestPath> superClassRequestPaths = collectClassRequestPaths(superClass, visitedClasses);
+            if (!superClassRequestPaths.isEmpty()) {
+                return superClassRequestPaths;
             }
         }
 
-        return list.toArray(new RequestPath[0]);
+        List<RequestPath> interfaceRequestPaths = new ArrayList<>();
+        for (PsiClass psiInterface : psiClass.getInterfaces()) {
+            interfaceRequestPaths.addAll(collectClassRequestPaths(psiInterface, visitedClasses));
+        }
+        return dedupe(interfaceRequestPaths);
     }
 
+    private static List<RequestPath> collectMethodRequestPaths(PsiMethod psiMethod, Set<PsiMethod> visitedMethods) {
+        if (psiMethod == null || !visitedMethods.add(psiMethod)) {
+            return new ArrayList<>();
+        }
 
-    private static String getRequestMappingValue(PsiAnnotation annotation) {
-        String value = PsiAnnotationHelper.getAnnotationAttributeValue(annotation, "value");
+        List<RequestPath> ownRequestPaths = getRequestPathsFromModifierList(psiMethod.getModifierList(), "/");
+        if (!ownRequestPaths.isEmpty()) {
+            return ownRequestPaths;
+        }
 
-//        String value = psiAnnotationMemberValue.getText().replace("\"","");
-//        if(psiAnnotationMemberValue.)
+        List<RequestPath> superMethodRequestPaths = new ArrayList<>();
+        for (PsiMethod superMethod : psiMethod.findSuperMethods()) {
+            superMethodRequestPaths.addAll(collectMethodRequestPaths(superMethod, visitedMethods));
+        }
+        return dedupe(superMethodRequestPaths);
+    }
 
-        if (org.apache.commons.lang3.StringUtils.isEmpty(value))
-            value = PsiAnnotationHelper.getAnnotationAttributeValue(annotation, "path");
-        return value;
+    private static List<RequestPath> getRequestPathsFromModifierList(@Nullable PsiModifierList modifierList,
+                                                                     String defaultValue) {
+        if (modifierList == null) {
+            return new ArrayList<>();
+        }
+
+        List<RequestPath> requestPaths = new ArrayList<>();
+        for (PsiAnnotation annotation : modifierList.getAnnotations()) {
+            if (isSupportedRequestMappingAnnotation(annotation)) {
+                requestPaths.addAll(getRequestMappings(annotation, defaultValue));
+            }
+        }
+        return dedupe(requestPaths);
+    }
+
+    private static List<String> getPathAttributeValues(PsiAnnotation annotation) {
+        List<String> pathList = PsiAnnotationHelper.getAnnotationAttributeValues(annotation, "value");
+        if (pathList.isEmpty()) {
+            pathList = PsiAnnotationHelper.getAnnotationAttributeValues(annotation, "path");
+        }
+        return pathList;
+    }
+
+    private static List<RequestPath> dedupe(List<RequestPath> requestPaths) {
+        Map<String, RequestPath> deduped = new LinkedHashMap<>();
+        for (RequestPath requestPath : requestPaths) {
+            deduped.putIfAbsent(requestPath.getPath() + "#" + requestPath.getMethod(), requestPath);
+        }
+        return new ArrayList<>(deduped.values());
     }
 
     public static String[] getRequestMappingValues(PsiAnnotation annotation) {
-        String[] values;
-        //一个value class com.intellij.psi.impl.source.tree.java.PsiLiteralExpressionImpl
-        //多个value  class com.intellij.psi.impl.source.tree.java.PsiArrayInitializerMemberValueImpl
-        PsiAnnotationMemberValue attributeValue = annotation.findDeclaredAttributeValue("value");
-
-        if (attributeValue instanceof PsiLiteralExpression) {
-
-            return new String[]{((PsiLiteralExpression) attributeValue).getValue().toString()};
-        }
-        if (attributeValue instanceof PsiArrayInitializerMemberValue) {
-            PsiAnnotationMemberValue[] initializers = ((PsiArrayInitializerMemberValue) attributeValue).getInitializers();
-            values = new String[initializers.length];
-
-            for (PsiAnnotationMemberValue initializer : initializers) {
-
-            }
-
-            for (int i = 0; i < initializers.length; i++) {
-                values[i] = ((PsiLiteralExpression) (initializers[i])).getValue().toString();
-            }
-        }
-
-        return new String[]{};
+        List<String> values = getPathAttributeValues(annotation);
+        return values.toArray(new String[0]);
     }
 
 
     public static String getOneRequestMappingPath(PsiClass psiClass) {
-        // todo: 有必要 处理 PostMapping,GetMapping 么？
-        PsiAnnotation annotation = PsiAnnotationHelper.findAnnotation(
-                psiClass.getModifierList(), SpringRequestMethodAnnotation.REQUEST_MAPPING.getQualifiedName());
-
-        String path = null;
-        if (annotation != null) {
-            path = RequestMappingAnnotationHelper.getRequestMappingValue(annotation);
-        }
-
-        return path != null ? path : "";
+        List<RequestPath> requestPaths = collectClassRequestPaths(psiClass, new HashSet<>());
+        return requestPaths.isEmpty() ? "" : requestPaths.get(0).getPath();
     }
 
 
     public static String getOneRequestMappingPath(PsiMethod psiMethod) {
-//        System.out.println("psiMethod:::::::" + psiMethod);
-        SpringRequestMethodAnnotation requestAnnotation = null;
-
-        List<SpringRequestMethodAnnotation> springRequestAnnotations = Arrays.stream(SpringRequestMethodAnnotation.values()).filter(annotation ->
-                PsiAnnotationHelper.findAnnotation(psiMethod.getModifierList(), annotation.getQualifiedName()) != null
-        ).collect(Collectors.toList());
-
-        if (!springRequestAnnotations.isEmpty()) {
-            requestAnnotation = springRequestAnnotations.get(0);
+        RequestPath[] requestPaths = getRequestPaths(psiMethod);
+        if (requestPaths.length > 0) {
+            return requestPaths[0].getPath();
         }
 
-        String mappingPath;
-        if (requestAnnotation != null) {
-            PsiAnnotation annotation = PsiAnnotationHelper.findAnnotation(
-                    psiMethod.getModifierList(), requestAnnotation.getQualifiedName());
-            mappingPath = RequestMappingAnnotationHelper.getRequestMappingValue(annotation);
-        } else {
-            String methodName = psiMethod.getName();
-            mappingPath = StringUtils.uncapitalize(methodName);
-        }
-
-        return mappingPath;
+        return StringUtils.uncapitalize(psiMethod.getName());
     }
 
 
