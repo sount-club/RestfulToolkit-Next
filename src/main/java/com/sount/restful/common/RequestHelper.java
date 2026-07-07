@@ -28,6 +28,8 @@ public class RequestHelper {
     private static final Logger LOG = Logger.getInstance(RequestHelper.class);
     private static final Charset UTF8 = StandardCharsets.UTF_8;
     private static final int TIMEOUT_MS = 30_000;
+    /** Cap response body size read into memory to avoid OOM on large/download endpoints. */
+    private static final long MAX_RESPONSE_BYTES = 5L * 1024 * 1024;
 
     private static final PoolingHttpClientConnectionManager CONNECTION_MANAGER = new PoolingHttpClientConnectionManager();
 
@@ -231,6 +233,11 @@ public class RequestHelper {
     private static String toString(HttpEntity entity) {
         if (entity == null) {
             return "";
+        }
+        long contentLength = entity.getContentLength();
+        if (contentLength > MAX_RESPONSE_BYTES) {
+            LOG.warn("Skipping oversized HTTP response body (" + contentLength + " bytes) to avoid OOM");
+            return "[Response body too large to display: " + contentLength + " bytes]";
         }
         try {
             String result = EntityUtils.toString(entity, UTF8);

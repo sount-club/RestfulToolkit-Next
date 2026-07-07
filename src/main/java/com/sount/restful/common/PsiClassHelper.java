@@ -36,7 +36,12 @@ public class PsiClassHelper {
 
     public String convertClassToJSON(String className, Project project) {
         if (className.contains("List<")) {
-            String entityName = className.substring(className.indexOf("<") + 1, className.lastIndexOf(">"));
+            String entityName = extractListElementType(className);
+            if (entityName == null) {
+                // Malformed/unclosed generic (e.g. "List<" without '>') — fall back to POJO
+                // instead of throwing StringIndexOutOfBoundsException.
+                return convertPojoEntityToJSON(className, project);
+            }
             Map<String, Object> jsonMap = assembleClassToMap(entityName, project);
             List<Map<String, Object>> jsonList = new ArrayList<>();
             jsonList.add(jsonMap);
@@ -44,6 +49,39 @@ public class PsiClassHelper {
         } else {
             return convertPojoEntityToJSON(className, project);
         }
+    }
+
+    /**
+     * Extracts the element type of {@code List<T>} type string for JSON sample generation.
+     * Handles nested/multiple type arguments (e.g. {@code Map<String,List<User>>} yields
+     * {@code String}) and returns {@code null} for malformed/unclosed generics so the caller
+     * can fall back instead of throwing.
+     */
+    private static @Nullable String extractListElementType(@NotNull String className) {
+        int start = className.indexOf('<');
+        int end = className.lastIndexOf('>');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        String inner = className.substring(start + 1, end).trim();
+        if (inner.isEmpty()) {
+            return null;
+        }
+        int topLevelComma = findTopLevelComma(inner);
+        String first = topLevelComma < 0 ? inner : inner.substring(0, topLevelComma).trim();
+        int nestedGeneric = first.indexOf('<');
+        return nestedGeneric < 0 ? first : first.substring(0, nestedGeneric).trim();
+    }
+
+    private static int findTopLevelComma(@NotNull String typeArgs) {
+        int depth = 0;
+        for (int i = 0; i < typeArgs.length(); i++) {
+            char c = typeArgs.charAt(i);
+            if (c == '<') depth++;
+            else if (c == '>') depth--;
+            else if (c == ',' && depth == 0) return i;
+        }
+        return -1;
     }
 
     private String convertPojoEntityToJSON(String className, Project project) {

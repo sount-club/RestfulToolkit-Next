@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class EndpointIndex implements Disposable {
@@ -39,7 +40,7 @@ public class EndpointIndex implements Disposable {
     private static final int DEBOUNCE_MS = 1000;
     private static final int RETRY_DELAY_MS = 2000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
-    private volatile int retryCount = 0;
+    private final AtomicInteger retryCount = new AtomicInteger(0);
 
     public EndpointIndex(@NotNull Project project) {
         myProject = project;
@@ -59,11 +60,10 @@ public class EndpointIndex implements Disposable {
     }
 
     public List<RestServiceItem> getItems() {
-        if (myDirty.get() && !myRebuilding.get()) {
-            LOG.info("Endpoint index is dirty, scheduling rebuild...");
-            retryCount = 0;
-            scheduleRebuild();
-        }
+        // Read-only snapshot getter. Rebuilds are driven by the PSI/roots/dumb-mode
+        // listeners and the initial schedule in the constructor; a dirty flag by itself
+        // never schedules a rebuild from a getter (avoids check-then-act races and
+        // unrelated EDT work triggered from a read path).
         return myItems;
     }
 
@@ -73,7 +73,7 @@ public class EndpointIndex implements Disposable {
 
     public void refresh() {
         markDirtyForRebuild();
-        retryCount = 0;
+        retryCount.set(0);
         scheduleRebuild();
     }
 
@@ -201,7 +201,7 @@ public class EndpointIndex implements Disposable {
         }
         long generation = currentDirtyGeneration();
 
-        LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount + 1) + ")");
+        LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount.get() + 1) + ")");
         long startTime = System.nanoTime();
 
         ReadAction.nonBlocking(() -> {
@@ -210,7 +210,12 @@ public class EndpointIndex implements Disposable {
             } catch (ProcessCanceledException e) {
                 throw e;
             } catch (Throwable e) {
-                LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount + 1) + ")", e);
+                // Tolerate any failure while scanning user code (including Errors such as
+                // NoClassDefFoundError/LinkageError from incomplete project dependencies) so
+                // a single problematic class never aborts the whole index rebuild. PCE is
+                // rethrown above; this matches the catch-Throwable pattern used across all
+                // endpoint resolvers for user-code-analysis fault tolerance.
+                LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount.get() + 1) + ")", e);
                 return null;
             }
         })
@@ -229,15 +234,15 @@ public class EndpointIndex implements Disposable {
             if (items == null) {
                 // Error case: items is null means exception was caught inside the task
                 myRebuilding.set(false);
-                if (retryCount < MAX_RETRY_ATTEMPTS) {
-                    retryCount++;
+                if (retryCount.get() < MAX_RETRY_ATTEMPTS) {
+                    retryCount.incrementAndGet();
                     LOG.info("Scheduling retry in " + RETRY_DELAY_MS + "ms...");
                     myAlarm.cancelAllRequests();
                     myAlarm.addRequest(this::doRebuild, RETRY_DELAY_MS);
                 } else {
                     LOG.warn("Max retry attempts reached. Endpoint index may be incomplete.");
                     myDirty.set(false);
-                    retryCount = 0;
+                    retryCount.set(0);
                     notifyListeners();
                 }
                 return;
@@ -246,7 +251,7 @@ public class EndpointIndex implements Disposable {
             myItems = items;
             myDirty.set(false);
             myRebuilding.set(false);
-            retryCount = 0;
+            retryCount.set(0);
 
             LOG.info("Endpoint index rebuild complete. Found " + items.size()
                     + " endpoints in " + elapsedMs + "ms.");

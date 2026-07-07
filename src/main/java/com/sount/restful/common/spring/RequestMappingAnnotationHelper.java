@@ -1,6 +1,8 @@
 package com.sount.restful.common.spring;
 
 
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.psi.*;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
 import com.sount.restful.common.PsiAnnotationHelper;
@@ -17,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 
 public final class RequestMappingAnnotationHelper implements RestSupportedAnnotationHelper {
+    private static final Logger LOG = Logger.getInstance(RequestMappingAnnotationHelper.class);
 
     private RequestMappingAnnotationHelper() {
     }
@@ -122,8 +125,16 @@ public final class RequestMappingAnnotationHelper implements RestSupportedAnnota
         }
 
         List<RequestPath> superMethodRequestPaths = new ArrayList<>();
-        for (PsiMethod superMethod : psiMethod.findSuperMethods()) {
-            superMethodRequestPaths.addAll(collectMethodRequestPaths(superMethod, visitedMethods));
+        try {
+            for (PsiMethod superMethod : psiMethod.findSuperMethods()) {
+                superMethodRequestPaths.addAll(collectMethodRequestPaths(superMethod, visitedMethods));
+            }
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (Throwable e) {
+            // Tolerate PSI inconsistencies (e.g. "Stub count doesn't match stubbed node length"
+            // when Lombok plugin triggers PSI tree loading on files with stale stub indices).
+            LOG.debug("Failed to resolve super methods for " + psiMethod.getName(), e);
         }
         return dedupe(superMethodRequestPaths);
     }

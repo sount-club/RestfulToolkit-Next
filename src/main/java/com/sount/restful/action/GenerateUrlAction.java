@@ -26,11 +26,12 @@ import java.util.Arrays;
  * 右键菜单 → "Generate && Copy Relation URL"
  */
 public class GenerateUrlAction extends AbstractBaseAction {
-    Editor myEditor;
 
     @Override
     public void actionPerformed(AnActionEvent e) {
-        myEditor = e.getData(CommonDataKeys.EDITOR);
+        // Local variable, not an instance field: AnAction instances are singletons reused
+        // across projects/sessions, so caching the Editor would leak cross-context state.
+        Editor editor = e.getData(CommonDataKeys.EDITOR);
         PsiMethod psiMethod = findTargetMethod(e);
         if (psiMethod == null) return;
 
@@ -45,7 +46,7 @@ public class GenerateUrlAction extends AbstractBaseAction {
         }
 
         CopyPasteManager.getInstance().setContents(new StringSelection(servicePath));
-        showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), myEditor);
+        showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), editor);
     }
 
     private boolean isJaxrsRestMethod(PsiMethod psiMethod) {
