@@ -13,6 +13,21 @@
 
 ---
 
+## 1.1.2 更新
+
+- 修复索引重建和导航中的线程安全问题（retryCount 改为 AtomicInteger、移除 getter 触发重建的竞态条件）
+- 增强导航稳定性：EndpointNavigationTarget 降级导航、RestServiceItem 增加 tryNavigate 失败检测
+- 重构端点索引错误处理与状态跟踪：引入 EndpointResolutionException、ensureRebuildScheduled 和 RebuildResult
+- 优化异步搜索背景执行，避免 EDT 阻塞，并增加搜索结果应用回调
+- 改进导航失败的用户反馈：SearchPopupActions 显示状态信息而非静默返回
+- 修复 GenerateUrlAction 中的单例状态泄漏
+- 优化 SpringWebFlux 解析器：移除低效的 FileTypeIndex 全量文件扫描，改用关键词预过滤
+- 改进 Spring 占位符解析和 JSON 格式化错误处理
+- 增强 Kotlin 端点解析器的类型安全检查
+- 为 SearchHistory 添加同步保护和状态复制机制
+
+---
+
 ## 1.1.1 更新
 
 - 修正 README 与插件发布说明中已过期的 `RestServices` 工具窗口描述，统一为当前的统一搜索窗口和编辑器右键能力
