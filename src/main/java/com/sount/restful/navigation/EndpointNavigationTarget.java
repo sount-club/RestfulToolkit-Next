@@ -5,56 +5,82 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.SmartPointerManager;
+import com.intellij.psi.SmartPsiElementPointer;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 final class EndpointNavigationTarget {
     private static final Logger LOG = Logger.getInstance(EndpointNavigationTarget.class);
-    private final PsiElement psiElement;
-    private final Navigatable fallbackNavigatable;
+    private final SmartPsiElementPointer<PsiElement> elementPointer;
+    private final Project project;
+    private final VirtualFile fallbackFile;
 
     EndpointNavigationTarget(@Nullable PsiElement psiElement) {
-        this.psiElement = psiElement;
-        this.fallbackNavigatable = psiElement instanceof Navigatable navigatable ? navigatable : null;
+        this.elementPointer = psiElement != null
+                ? SmartPointerManager.getInstance(psiElement.getProject()).createSmartPsiElementPointer(psiElement)
+                : null;
+        this.project = psiElement != null ? psiElement.getProject() : null;
+        PsiFile containingFile = psiElement != null ? psiElement.getContainingFile() : null;
+        this.fallbackFile = containingFile != null ? containingFile.getVirtualFile() : null;
     }
 
     @Nullable
     PsiElement getPsiElement() {
-        return psiElement;
+        return elementPointer != null ? elementPointer.getElement() : null;
     }
 
-    void navigate(boolean requestFocus) {
-        Navigatable navigatable = resolveNavigatable();
-        if (navigatable != null) {
+    boolean navigate(boolean requestFocus) {
+        try {
+            Navigatable navigatable = resolveNavigatable();
+            if (navigatable == null) {
+                return false;
+            }
             navigatable.navigate(requestFocus);
+            return true;
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to navigate to REST endpoint", e);
+            return false;
         }
     }
 
     boolean canNavigate() {
-        return resolveNavigatable() != null;
+        try {
+            return resolveNavigatable() != null;
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            LOG.warn("Failed to check REST endpoint navigation target", e);
+            return false;
+        }
     }
 
     private @Nullable Navigatable resolveNavigatable() {
         return ReadAction.computeBlocking(() -> {
-            if (psiElement == null || !psiElement.isValid()) return null;
+            PsiElement psiElement = getPsiElement();
+            if (psiElement == null || !psiElement.isValid()) return resolveFileFallback();
             // EditSourceUtil.getDescriptor / canNavigate trigger AST loading, which runs a
             // stub-index consistency check that can throw UpToDateStubIndexMismatch (a
             // platform-level index/PSI inconsistency) even though isValid() passed. Each
             // attempt is guarded so navigation degrades gracefully instead of crashing the
             // key handler on the EDT.
-            Navigatable descriptor = safeGetDescriptor();
+            Navigatable descriptor = safeGetDescriptor(psiElement);
             if (descriptor != null) return descriptor;
-            if (fallbackNavigatable != null && safeCanNavigate(fallbackNavigatable)) {
-                return fallbackNavigatable;
+            if (psiElement instanceof Navigatable navigatable && safeCanNavigate(navigatable)) {
+                return navigatable;
             }
             return resolveFileFallback();
         });
     }
 
-    private @Nullable Navigatable safeGetDescriptor() {
+    private @Nullable Navigatable safeGetDescriptor(@NotNull PsiElement psiElement) {
         try {
             Navigatable descriptor = EditSourceUtil.getDescriptor(psiElement);
             if (descriptor != null && descriptor.canNavigate()) return descriptor;
@@ -81,11 +107,8 @@ final class EndpointNavigationTarget {
     /** Last-resort fallback: open the containing file without a precise (AST-derived) offset. */
     private @Nullable Navigatable resolveFileFallback() {
         try {
-            PsiFile file = psiElement.getContainingFile();
-            if (file == null) return null;
-            VirtualFile vFile = file.getVirtualFile();
-            if (vFile == null) return null;
-            return new OpenFileDescriptor(psiElement.getProject(), vFile);
+            if (project == null || fallbackFile == null || !fallbackFile.isValid()) return null;
+            return new OpenFileDescriptor(project, fallbackFile);
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (RuntimeException e) {

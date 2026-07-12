@@ -11,6 +11,7 @@ import com.sount.restful.navigation.RestServiceItem;
 
 import javax.swing.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -61,6 +62,23 @@ public class SearchControllerAsyncTest extends BasePlatformTestCase {
 
         assertEquals(1, model.getSize());
         assertEquals("/api/users", model.get(0).item().getUrl());
+    }
+
+    public void testResultsAppliedCallbackRunsAfterSelectionIsReady() {
+        RestServiceItem item = createItem("GET", "/api/users", "UserController", "users");
+        EndpointIndex index = stubIndex(List.of(item));
+        DefaultListModel<SearchResult> model = new DefaultListModel<>();
+        JBList<SearchResult> resultList = new JBList<>(model);
+        AtomicBoolean callbackObservedSelection = new AtomicBoolean(false);
+
+        SearchController.performSearch("users", index, model, resultList,
+                new JLabel(), new JButton(), null, new UnifiedSearchRenderer(),
+                new SearchController.UpdateGuard(), null, null, null, null, null,
+                () -> callbackObservedSelection.set(resultList.getSelectedValue() != null));
+
+        waitUntil(callbackObservedSelection::get);
+
+        assertEquals(0, resultList.getSelectedIndex());
     }
 
     /**

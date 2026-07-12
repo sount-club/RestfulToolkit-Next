@@ -10,6 +10,7 @@ import com.sount.restful.navigation.RestServiceItem;
 
 import javax.swing.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UnifiedSearchPopupTest extends BasePlatformTestCase {
 
@@ -207,6 +208,32 @@ public class UnifiedSearchPopupTest extends BasePlatformTestCase {
 
         assertEquals(20, list.getSelectedIndex());
         assertEquals(200, list.getVisibleRect().y);
+    }
+
+    public void testEnterActionIsInstalledOnFilterControls() {
+        JPanel panel = new JPanel();
+        JComboBox<String> comboBox = new JComboBox<>(new String[]{"All Modules"});
+        JButton filterButton = new JButton("GET");
+        panel.add(comboBox);
+        panel.add(filterButton);
+        AtomicInteger navigations = new AtomicInteger();
+
+        SearchPopupActions.installEnterAction(panel, navigations::incrementAndGet);
+
+        invokeEnterAction(comboBox);
+        invokeEnterAction(filterButton);
+
+        assertEquals(2, navigations.get());
+    }
+
+    private static void invokeEnterAction(JComponent component) {
+        Object actionKey = component.getInputMap(JComponent.WHEN_FOCUSED)
+                .get(KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0));
+        assertNotNull(actionKey);
+        Action action = component.getActionMap().get(actionKey);
+        assertNotNull(action);
+        action.actionPerformed(new java.awt.event.ActionEvent(component,
+                java.awt.event.ActionEvent.ACTION_PERFORMED, "enter"));
     }
 
     private static class TrackingList extends JBList<SearchResult> {

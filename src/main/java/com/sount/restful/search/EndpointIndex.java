@@ -18,6 +18,7 @@ import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.common.resolver.BaseServiceResolver;
 import com.sount.restful.navigation.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.concurrency.CancellablePromise;
 
 import java.util.Collections;
 import java.util.List;
@@ -33,22 +34,32 @@ public class EndpointIndex implements Disposable {
     private volatile List<RestServiceItem> myItems = Collections.emptyList();
     private final AtomicBoolean myDirty = new AtomicBoolean(true);
     private final AtomicBoolean myRebuilding = new AtomicBoolean(false);
+    private final AtomicBoolean myRebuildScheduled = new AtomicBoolean(false);
+    private final AtomicBoolean myDisposed = new AtomicBoolean(false);
     private final AtomicLong myDirtyGeneration = new AtomicLong();
     private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
     private final List<Runnable> myListeners = new CopyOnWriteArrayList<>();
 
     private static final int DEBOUNCE_MS = 1000;
+    private static final int PROJECT_OPEN_RETRY_DELAY_MS = 500;
     private static final int RETRY_DELAY_MS = 2000;
+    private static final int EXTENDED_RETRY_DELAY_MS = 30000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private final AtomicInteger retryCount = new AtomicInteger(0);
+    private volatile CancellablePromise<RebuildResult> myRebuildPromise;
 
     public EndpointIndex(@NotNull Project project) {
+        this(project, true);
+    }
+
+    EndpointIndex(@NotNull Project project, boolean initialize) {
         myProject = project;
-        registerPsiListener();
-        registerRootsListener();
-        registerIndexingListener();
-        // Initial load
-        scheduleRebuild();
+        if (initialize) {
+            registerPsiListener();
+            registerRootsListener();
+            registerIndexingListener();
+            ensureRebuildScheduled();
+        }
     }
 
     public static EndpointIndex getInstance(@NotNull Project project) {
@@ -71,10 +82,23 @@ public class EndpointIndex implements Disposable {
         return !DumbService.isDumb(myProject) && !myDirty.get() && !myRebuilding.get();
     }
 
+    /**
+     * Ensures a dirty endpoint index has an active or pending rebuild. UI entry points call
+     * this explicitly so a previously cancelled startup task can recover without adding
+     * side effects to {@link #getItems()}.
+     */
+    public void ensureRebuildScheduled() {
+        if (myDisposed.get() || myProject.isDisposed() || !myDirty.get() || myRebuilding.get()) {
+            return;
+        }
+        retryCount.set(0);
+        rescheduleRebuild(0);
+    }
+
     public void refresh() {
         markDirtyForRebuild();
         retryCount.set(0);
-        scheduleRebuild();
+        rescheduleRebuild(0);
     }
 
     public void addListener(@NotNull Runnable listener) {
@@ -87,7 +111,13 @@ public class EndpointIndex implements Disposable {
 
     @Override
     public void dispose() {
+        myDisposed.set(true);
+        CancellablePromise<RebuildResult> promise = myRebuildPromise;
+        if (promise != null) {
+            promise.cancel();
+        }
         myAlarm.cancelAllRequests();
+        myRebuildScheduled.set(false);
     }
 
     private void registerPsiListener() {
@@ -154,7 +184,7 @@ public class EndpointIndex implements Disposable {
                 LOG.info("Project roots changed, scheduling endpoint index rebuild...");
                 markDirtyForRebuild();
                 notifyListeners();
-                debounceRebuild();
+                rescheduleRebuild(DEBOUNCE_MS);
             }
         });
     }
@@ -163,7 +193,7 @@ public class EndpointIndex implements Disposable {
         DumbService.getInstance(myProject).runWhenSmart(() -> {
             LOG.info("Smart mode entered, triggering endpoint index rebuild for full multi-module coverage...");
             markDirtyForRebuild();
-            scheduleRebuild();
+            rescheduleRebuild(0);
         });
     }
 
@@ -173,7 +203,7 @@ public class EndpointIndex implements Disposable {
 
         if (canAffectEndpointIndex(file)) {
             markDirtyForRebuild();
-            debounceRebuild();
+            rescheduleRebuild(DEBOUNCE_MS);
         }
     }
 
@@ -184,18 +214,30 @@ public class EndpointIndex implements Disposable {
         return "java".equals(ext) || "kt".equals(ext);
     }
 
-    private void debounceRebuild() {
+    private void rescheduleRebuild(int delayMillis) {
         myAlarm.cancelAllRequests();
-        myAlarm.addRequest(this::doRebuild, DEBOUNCE_MS);
+        myRebuildScheduled.set(false);
+        scheduleRebuild(delayMillis);
     }
 
-    private void scheduleRebuild() {
-        myAlarm.cancelAllRequests();
-        myAlarm.addRequest(this::doRebuild, 0);
+    private void scheduleRebuild(int delayMillis) {
+        if (myDisposed.get() || myProject.isDisposed()
+                || !myRebuildScheduled.compareAndSet(false, true)) {
+            return;
+        }
+        myAlarm.addRequest(() -> {
+            myRebuildScheduled.set(false);
+            doRebuild();
+        }, delayMillis);
     }
 
     private void doRebuild() {
-        if (!myProject.isOpen() || myProject.isDisposed()) return;
+        if (myDisposed.get() || myProject.isDisposed()) return;
+        if (!myProject.isOpen()) {
+            scheduleRebuild(projectOpenRetryDelayMillis());
+            return;
+        }
+        if (!myDirty.get()) return;
         if (!myRebuilding.compareAndSet(false, true)) {
             return;
         }
@@ -204,60 +246,126 @@ public class EndpointIndex implements Disposable {
         LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount.get() + 1) + ")");
         long startTime = System.nanoTime();
 
-        ReadAction.nonBlocking(() -> {
+        CancellablePromise<RebuildResult> promise = ReadAction.nonBlocking(() -> {
             try {
-                return BaseServiceResolver.findAllEndpoints(myProject);
+                return RebuildResult.success(resolveEndpoints());
             } catch (ProcessCanceledException e) {
                 throw e;
-            } catch (Throwable e) {
-                // Tolerate any failure while scanning user code (including Errors such as
-                // NoClassDefFoundError/LinkageError from incomplete project dependencies) so
-                // a single problematic class never aborts the whole index rebuild. PCE is
-                // rethrown above; this matches the catch-Throwable pattern used across all
-                // endpoint resolvers for user-code-analysis fault tolerance.
-                LOG.warn("Failed to rebuild endpoint index (attempt " + (retryCount.get() + 1) + ")", e);
-                return null;
+            } catch (Throwable error) {
+                return RebuildResult.failure(error);
             }
         })
         .inSmartMode(myProject)
         .expireWith(this)
-        .finishOnUiThread(ModalityState.defaultModalityState(), items -> {
-            long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
-
-            if (isStaleRebuild(generation)) {
-                myRebuilding.set(false);
-                LOG.debug("Endpoint index rebuild result is stale; scheduling a fresh rebuild");
-                scheduleRebuild();
-                return;
+        .finishOnUiThread(ModalityState.defaultModalityState(), result -> {
+            if (result.error() != null) {
+                handleRebuildFailure(generation, result.error());
+            } else {
+                handleRebuildSuccess(generation, startTime, result.items());
             }
-
-            if (items == null) {
-                // Error case: items is null means exception was caught inside the task
-                myRebuilding.set(false);
-                if (retryCount.get() < MAX_RETRY_ATTEMPTS) {
-                    retryCount.incrementAndGet();
-                    LOG.info("Scheduling retry in " + RETRY_DELAY_MS + "ms...");
-                    myAlarm.cancelAllRequests();
-                    myAlarm.addRequest(this::doRebuild, RETRY_DELAY_MS);
-                } else {
-                    LOG.warn("Max retry attempts reached. Endpoint index may be incomplete.");
-                    myDirty.set(false);
-                    retryCount.set(0);
-                    notifyListeners();
-                }
-                return;
-            }
-
-            myItems = items;
-            myDirty.set(false);
-            myRebuilding.set(false);
-            retryCount.set(0);
-
-            LOG.info("Endpoint index rebuild complete. Found " + items.size()
-                    + " endpoints in " + elapsedMs + "ms.");
-            notifyListeners();
         })
         .submit(AppExecutorUtil.getAppExecutorService());
+        myRebuildPromise = promise;
+        promise.onError(error -> handleRebuildFailure(generation, error));
+    }
+
+    protected @NotNull List<RestServiceItem> resolveEndpoints() {
+        return BaseServiceResolver.findAllEndpoints(myProject);
+    }
+
+    private void handleRebuildSuccess(long generation, long startTime,
+                                      @NotNull List<RestServiceItem> items) {
+        myRebuildPromise = null;
+        if (isStaleRebuild(generation)) {
+            myRebuilding.set(false);
+            LOG.debug("Endpoint index rebuild result is stale; scheduling a fresh rebuild");
+            scheduleRebuild(0);
+            return;
+        }
+
+        myItems = List.copyOf(items);
+        myDirty.set(false);
+        if (isStaleRebuild(generation)) {
+            myDirty.set(true);
+            myRebuilding.set(false);
+            scheduleRebuild(0);
+            return;
+        }
+
+        myRebuilding.set(false);
+        retryCount.set(0);
+        long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+        LOG.info("Endpoint index rebuild complete. Found " + items.size()
+                + " endpoints in " + elapsedMs + "ms.");
+        notifyListeners();
+    }
+
+    private void handleRebuildFailure(long generation, @NotNull Throwable error) {
+        myRebuildPromise = null;
+        if (!myRebuilding.compareAndSet(true, false)) {
+            return;
+        }
+        myDirty.set(true);
+
+        if (myDisposed.get() || myProject.isDisposed()) {
+            return;
+        }
+        if (isStaleRebuild(generation)) {
+            retryCount.set(0);
+            scheduleRebuild(0);
+            return;
+        }
+
+        int attempt = retryCount.incrementAndGet();
+        if (!(error instanceof ProcessCanceledException)) {
+            LOG.warn("Failed to rebuild endpoint index (attempt " + attempt + ")", error);
+        } else {
+            LOG.debug("Endpoint index rebuild was cancelled; scheduling recovery", error);
+        }
+
+        int delay = attempt <= maxRetryAttempts()
+                ? retryDelayMillis()
+                : extendedRetryDelayMillis();
+        if (attempt > maxRetryAttempts()) {
+            LOG.warn("Endpoint index rebuild is still failing; keeping the last snapshot and retrying later.");
+            retryCount.set(0);
+        }
+        notifyListeners();
+        scheduleRebuild(delay);
+    }
+
+    int projectOpenRetryDelayMillis() {
+        return PROJECT_OPEN_RETRY_DELAY_MS;
+    }
+
+    int retryDelayMillis() {
+        return RETRY_DELAY_MS;
+    }
+
+    int extendedRetryDelayMillis() {
+        return EXTENDED_RETRY_DELAY_MS;
+    }
+
+    int maxRetryAttempts() {
+        return MAX_RETRY_ATTEMPTS;
+    }
+
+    boolean isDirtyForTest() {
+        return myDirty.get();
+    }
+
+    boolean isRebuildingForTest() {
+        return myRebuilding.get();
+    }
+
+    private record RebuildResult(@NotNull List<RestServiceItem> items, Throwable error) {
+        private static @NotNull RebuildResult success(@NotNull List<RestServiceItem> items) {
+            return new RebuildResult(items, null);
+        }
+
+        private static @NotNull RebuildResult failure(@NotNull Throwable error) {
+            return new RebuildResult(Collections.emptyList(), error);
+        }
     }
 
     void markDirtyForRebuild() {

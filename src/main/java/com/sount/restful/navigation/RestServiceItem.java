@@ -81,7 +81,15 @@ public class RestServiceItem implements NavigationItem {
 
     @Override
     public void navigate(boolean requestFocus) {
-        navigationTarget.navigate(requestFocus);
+        tryNavigate(requestFocus);
+    }
+
+    /**
+     * Attempts to navigate to this endpoint and reports whether IntelliJ accepted the target.
+     * Search UIs use this to avoid closing before navigation has actually started.
+     */
+    public boolean tryNavigate(boolean requestFocus) {
+        return navigationTarget.navigate(requestFocus);
     }
 
     @Override

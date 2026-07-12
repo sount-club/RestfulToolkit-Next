@@ -28,16 +28,30 @@ final class SearchPopupActions {
 
     // --- Navigation ---
 
-    static void navigateToSelected(@NotNull JBList<SearchResult> resultList,
-                                   @NotNull JBPopup popup,
-                                   @NotNull SearchHistory history) {
+    enum NavigationResult {
+        NAVIGATED,
+        NO_SELECTION,
+        FAILED
+    }
+
+    static @NotNull NavigationResult navigateToSelected(@NotNull JBList<SearchResult> resultList,
+                                                        @NotNull JBPopup popup,
+                                                        @NotNull SearchHistory history,
+                                                        @NotNull EndpointIndex index,
+                                                        @NotNull JLabel statusLabel) {
         SearchResult selected = resultList.getSelectedValue();
-        if (selected != null) {
-            RestServiceItem item = selected.item();
-            history.recordAccess(item);
-            popup.closeOk(null);
-            item.navigate(true);
+        if (selected == null) {
+            return NavigationResult.NO_SELECTION;
         }
+        RestServiceItem item = selected.item();
+        if (!item.tryNavigate(true)) {
+            statusLabel.setText(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_NAVIGATION_FAILED));
+            index.refresh();
+            return NavigationResult.FAILED;
+        }
+        history.recordAccess(item);
+        popup.closeOk(null);
+        return NavigationResult.NAVIGATED;
     }
 
     static void copySelectedPath(@NotNull JBList<SearchResult> resultList) {
@@ -174,16 +188,11 @@ final class SearchPopupActions {
         });
     }
 
-    static void installResultListKeyAdapter(@NotNull JBList<SearchResult> resultList,
-                                            @NotNull JBPopup popup,
-                                            @NotNull SearchHistory history) {
+    static void installResultListKeyAdapter(@NotNull JBList<SearchResult> resultList) {
         resultList.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    e.consume();
-                    navigateToSelected(resultList, popup, history);
-                } else if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
+                if (e.getKeyCode() == KeyEvent.VK_C && e.isControlDown()) {
                     e.consume();
                     copySelectedPath(resultList);
                 }
@@ -193,16 +202,12 @@ final class SearchPopupActions {
 
     static void installSearchFieldKeyAdapter(@NotNull SearchTextField searchField,
                                              @NotNull JBList<SearchResult> resultList,
-                                             @NotNull JBPopup popup,
-                                             @NotNull SearchHistory history) {
+                                             @NotNull JBPopup popup) {
         searchField.addKeyboardListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
                 if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
                     popup.cancel();
-                } else if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    e.consume();
-                    navigateToSelected(resultList, popup, history);
                 } else if (e.getKeyCode() == KeyEvent.VK_UP) {
                     e.consume();
                     moveSelectionFromSearchField(resultList, -1);
@@ -215,6 +220,25 @@ final class SearchPopupActions {
                 }
             }
         });
+    }
+
+    static void installEnterAction(@NotNull Component component, @NotNull Runnable navigateAction) {
+        if (component instanceof JComponent swingComponent) {
+            String actionKey = "restful.search.navigate";
+            swingComponent.getInputMap(JComponent.WHEN_FOCUSED)
+                    .put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), actionKey);
+            swingComponent.getActionMap().put(actionKey, new AbstractAction() {
+                @Override
+                public void actionPerformed(java.awt.event.ActionEvent e) {
+                    navigateAction.run();
+                }
+            });
+        }
+        if (component instanceof Container container) {
+            for (Component child : container.getComponents()) {
+                installEnterAction(child, navigateAction);
+            }
+        }
     }
 
     // --- UI helpers ---

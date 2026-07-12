@@ -72,10 +72,8 @@ public class JaxrsResolver extends BaseServiceResolver {
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (Throwable e) {
-            // Handle index inconsistency gracefully - log and return empty collection
-            // This can happen when IDE index is corrupted, being rebuilt, or has stub/text mismatch
-            LOG.warn("Failed to find @" + shortName + " annotations (index may be inconsistent)", e);
-            return new ArrayList<>();
+            throw new EndpointResolutionException(
+                    "Failed to query @" + shortName + " annotations from the project index", e);
         }
     }
 }
