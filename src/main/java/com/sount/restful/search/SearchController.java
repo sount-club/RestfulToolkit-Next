@@ -1,7 +1,9 @@
 package com.sount.restful.search;
 
-import com.intellij.openapi.module.Module;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.module.Module;
 import com.intellij.ui.components.JBList;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.method.HttpMethod;
@@ -79,11 +81,11 @@ final class SearchController {
         }
 
         final SearchHistory history = SearchHistory.getInstance(index.getProject());
+        final PathSearchOptions pathSearchOptions = PathSearchOptions.forProject(index.getProject());
         final boolean emptyQuery = text.isEmpty() && methodFilter == null;
         final List<String> highlightTokens = query.tokens();
 
-        AppExecutorUtil.getAppExecutorService().submit(() -> {
-            try {
+        ReadAction.nonBlocking(() -> {
                 List<RestServiceItem> searchableItems = allItems;
                 if (filterModule != null) {
                     List<RestServiceItem> filtered = new ArrayList<>();
@@ -101,44 +103,56 @@ final class SearchController {
                 if (emptyQuery) {
                     results = buildRecentResults(searchableItems, history::getLastAccessTime);
                 } else {
-                    results = SearchEngine.search(query, searchableItems, 200, history::getUseCount);
+                    results = SearchEngine.search(query, searchableItems, 200, history::getUseCount, pathSearchOptions);
                 }
 
-                SwingUtilities.invokeLater(() -> runIfLatest(updateGuard, updateGeneration, () -> {
+                return new SearchComputation(results, totalCount);
+            })
+            .expireWith(index.getProject())
+            .finishOnUiThread(ModalityState.any(), computation -> runIfLatest(updateGuard, updateGeneration, () -> {
                     // Set highlight tokens for renderer
                     renderer.setHighlightTokens(highlightTokens);
 
                     model.clear();
-                    for (SearchResult result : results) {
+                    for (SearchResult result : computation.results()) {
                         model.addElement(result);
                     }
-                    if (!results.isEmpty()) {
-                        int selectionIndex = SearchPopupModel.findSelectionIndex(results, preferredEndpointKey, preferredSelectionIndex);
+                    if (!computation.results().isEmpty()) {
+                        int selectionIndex = SearchPopupModel.findSelectionIndex(computation.results(), preferredEndpointKey, preferredSelectionIndex);
                         SearchPopupActions.selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
                     }
 
-                    statusLabel.setText(SearchPopupModel.buildStatusText(text, results.size(), totalCount, indexReady,
+                    statusLabel.setText(SearchPopupModel.buildStatusText(text, computation.results().size(), computation.totalCount(), indexReady,
                             filterModule, methodFilter));
 
                     // Show "搜索全部模块" button when no results and a module filter is active
-                    searchAllModulesBtn.setVisible(results.isEmpty() && filterModule != null && !text.isEmpty());
+                    searchAllModulesBtn.setVisible(computation.results().isEmpty() && filterModule != null && !text.isEmpty());
                     if (resultsApplied != null) {
                         resultsApplied.run();
                     }
-                }));
-            } catch (RuntimeException error) {
+                }))
+            .submit(AppExecutorUtil.getAppExecutorService())
+            .onError(error -> {
+                if (index.getProject().isDisposed()) {
+                    return;
+                }
                 LOG.warn("REST endpoint search failed for query: " + text, error);
                 SwingUtilities.invokeLater(() -> runIfLatest(updateGuard, updateGeneration, () -> {
+                    if (index.getProject().isDisposed()) {
+                        return;
+                    }
                     statusLabel.setText(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_SEARCH_FAILED));
                 }));
-            }
-        });
+            });
     }
 
     static void runIfLatest(@NotNull UpdateGuard updateGuard, long generation, @NotNull Runnable update) {
         if (updateGuard.isLatest(generation)) {
             update.run();
         }
+    }
+
+    private record SearchComputation(@NotNull List<SearchResult> results, int totalCount) {
     }
 
     static final class UpdateGuard {

@@ -38,6 +38,15 @@ public class PropertiesHandlerTest extends BasePlatformTestCase {
         assertNull(newHandler().cleanPlaceholderIfExist(null));
     }
 
+    public void testServletContextPathTakesPrecedenceOverLegacyContextPath() {
+        myFixture.configureByText("application.properties", """
+                server.context-path=/legacy
+                server.servlet.context-path=/current
+                """);
+
+        assertEquals("/current", newHandler().getContextPath());
+    }
+
     private PropertiesHandler newHandler() {
         return new PropertiesHandler(getModule());
     }

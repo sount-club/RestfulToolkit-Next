@@ -23,6 +23,7 @@ import org.jetbrains.concurrency.CancellablePromise;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -37,6 +38,7 @@ public class EndpointIndex implements Disposable {
     private final AtomicBoolean myRebuildScheduled = new AtomicBoolean(false);
     private final AtomicBoolean myDisposed = new AtomicBoolean(false);
     private final AtomicLong myDirtyGeneration = new AtomicLong();
+    private final Object myStateLock = new Object();
     private final Alarm myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, this);
     private final List<Runnable> myListeners = new CopyOnWriteArrayList<>();
 
@@ -46,7 +48,7 @@ public class EndpointIndex implements Disposable {
     private static final int EXTENDED_RETRY_DELAY_MS = 30000;
     private static final int MAX_RETRY_ATTEMPTS = 3;
     private final AtomicInteger retryCount = new AtomicInteger(0);
-    private volatile CancellablePromise<RebuildResult> myRebuildPromise;
+    private final AtomicReference<RebuildTask> myRebuildTask = new AtomicReference<>();
 
     public EndpointIndex(@NotNull Project project) {
         this(project, true);
@@ -112,9 +114,9 @@ public class EndpointIndex implements Disposable {
     @Override
     public void dispose() {
         myDisposed.set(true);
-        CancellablePromise<RebuildResult> promise = myRebuildPromise;
-        if (promise != null) {
-            promise.cancel();
+        RebuildTask rebuildTask = myRebuildTask.getAndSet(null);
+        if (rebuildTask != null && rebuildTask.promise != null) {
+            rebuildTask.promise.cancel();
         }
         myAlarm.cancelAllRequests();
         myRebuildScheduled.set(false);
@@ -241,11 +243,16 @@ public class EndpointIndex implements Disposable {
         if (!myRebuilding.compareAndSet(false, true)) {
             return;
         }
-        long generation = currentDirtyGeneration();
+        long generation;
+        synchronized (myStateLock) {
+            generation = currentDirtyGeneration();
+        }
 
         LOG.info("Starting endpoint index rebuild... (attempt " + (retryCount.get() + 1) + ")");
         long startTime = System.nanoTime();
 
+        RebuildTask rebuildTask = new RebuildTask();
+        myRebuildTask.set(rebuildTask);
         CancellablePromise<RebuildResult> promise = ReadAction.nonBlocking(() -> {
             try {
                 return RebuildResult.success(resolveEndpoints());
@@ -258,6 +265,9 @@ public class EndpointIndex implements Disposable {
         .inSmartMode(myProject)
         .expireWith(this)
         .finishOnUiThread(ModalityState.defaultModalityState(), result -> {
+            if (!myRebuildTask.compareAndSet(rebuildTask, null)) {
+                return;
+            }
             if (result.error() != null) {
                 handleRebuildFailure(generation, result.error());
             } else {
@@ -265,8 +275,16 @@ public class EndpointIndex implements Disposable {
             }
         })
         .submit(AppExecutorUtil.getAppExecutorService());
-        myRebuildPromise = promise;
-        promise.onError(error -> handleRebuildFailure(generation, error));
+        rebuildTask.promise = promise;
+        if (myDisposed.get()) {
+            promise.cancel();
+            return;
+        }
+        promise.onError(error -> {
+            if (myRebuildTask.compareAndSet(rebuildTask, null)) {
+                handleRebuildFailure(generation, error);
+            }
+        });
     }
 
     protected @NotNull List<RestServiceItem> resolveEndpoints() {
@@ -275,20 +293,19 @@ public class EndpointIndex implements Disposable {
 
     private void handleRebuildSuccess(long generation, long startTime,
                                       @NotNull List<RestServiceItem> items) {
-        myRebuildPromise = null;
-        if (isStaleRebuild(generation)) {
-            myRebuilding.set(false);
-            LOG.debug("Endpoint index rebuild result is stale; scheduling a fresh rebuild");
-            scheduleRebuild(0);
-            return;
+        synchronized (myStateLock) {
+            if (isStaleRebuild(generation)) {
+                myRebuilding.set(false);
+                LOG.debug("Endpoint index rebuild result is stale; scheduling a fresh rebuild");
+                scheduleRebuild(0);
+                return;
+            }
+            myItems = List.copyOf(items);
+            myDirty.set(false);
         }
 
-        myItems = List.copyOf(items);
-        myDirty.set(false);
-        if (isStaleRebuild(generation)) {
-            myDirty.set(true);
+        if (myDisposed.get() || myProject.isDisposed()) {
             myRebuilding.set(false);
-            scheduleRebuild(0);
             return;
         }
 
@@ -301,10 +318,7 @@ public class EndpointIndex implements Disposable {
     }
 
     private void handleRebuildFailure(long generation, @NotNull Throwable error) {
-        myRebuildPromise = null;
-        if (!myRebuilding.compareAndSet(true, false)) {
-            return;
-        }
+        myRebuilding.set(false);
         myDirty.set(true);
 
         if (myDisposed.get() || myProject.isDisposed()) {
@@ -369,8 +383,10 @@ public class EndpointIndex implements Disposable {
     }
 
     void markDirtyForRebuild() {
-        myDirty.set(true);
-        myDirtyGeneration.incrementAndGet();
+        synchronized (myStateLock) {
+            myDirty.set(true);
+            myDirtyGeneration.incrementAndGet();
+        }
     }
 
     long currentDirtyGeneration() {
@@ -379,6 +395,10 @@ public class EndpointIndex implements Disposable {
 
     boolean isStaleRebuild(long generation) {
         return generation != currentDirtyGeneration();
+    }
+
+    private static final class RebuildTask {
+        private volatile CancellablePromise<RebuildResult> promise;
     }
 
     private void notifyListeners() {

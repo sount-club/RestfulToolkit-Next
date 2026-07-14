@@ -53,8 +53,13 @@ final class SpringWebFluxRouterFunctionResolver {
                                                                  @NotNull GlobalSearchScope scope) {
         Set<PsiJavaFile> candidates = new LinkedHashSet<>();
         PsiSearchHelper searchHelper = PsiSearchHelper.getInstance(project);
+        // A router can be declared through a static import or a RouterFunction-returning
+        // bean, so searching only the fluent method names misses otherwise valid files.
+        collectFilesContaining(searchHelper, "RouterFunction", scope, candidates);
+        collectFilesContaining(searchHelper, "RouterFunctions", scope, candidates);
         collectFilesContaining(searchHelper, "route", scope, candidates);
         collectFilesContaining(searchHelper, "andRoute", scope, candidates);
+        collectFilesContaining(searchHelper, "nest", scope, candidates);
         return candidates;
     }
 

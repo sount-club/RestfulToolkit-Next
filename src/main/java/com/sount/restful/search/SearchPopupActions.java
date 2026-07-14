@@ -22,6 +22,7 @@ import java.awt.event.KeyEvent;
  * keyboard shortcuts, mouse events, navigation, and clipboard operations.
  */
 final class SearchPopupActions {
+    private static final String ENTER_ACTION_INSTALLED = "restful.search.enterActionInstalled";
 
     private SearchPopupActions() {
     }
@@ -223,6 +224,17 @@ final class SearchPopupActions {
     }
 
     static void installEnterAction(@NotNull Component component, @NotNull Runnable navigateAction) {
+        if (component instanceof JComponent root
+                && Boolean.TRUE.equals(root.getClientProperty(ENTER_ACTION_INSTALLED))) {
+            return;
+        }
+        installEnterActionRecursively(component, navigateAction);
+        if (component instanceof JComponent root) {
+            root.putClientProperty(ENTER_ACTION_INSTALLED, Boolean.TRUE);
+        }
+    }
+
+    private static void installEnterActionRecursively(@NotNull Component component, @NotNull Runnable navigateAction) {
         if (component instanceof JComponent swingComponent) {
             String actionKey = "restful.search.navigate";
             swingComponent.getInputMap(JComponent.WHEN_FOCUSED)
@@ -236,7 +248,7 @@ final class SearchPopupActions {
         }
         if (component instanceof Container container) {
             for (Component child : container.getComponents()) {
-                installEnterAction(child, navigateAction);
+                installEnterActionRecursively(child, navigateAction);
             }
         }
     }

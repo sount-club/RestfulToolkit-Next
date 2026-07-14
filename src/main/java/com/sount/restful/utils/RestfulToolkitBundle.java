@@ -70,6 +70,12 @@ public class RestfulToolkitBundle extends DynamicBundle {
         public static final String SEARCH_POPUP_STATUS_SEARCH_FAILED = "search.popup.status.search.failed";
         @NonNls
         public static final String SEARCH_POPUP_SELECTION_CURRENT = "search.popup.selection.current";
+        @NonNls
+        public static final String SEARCH_POPUP_GATEWAY_PREFIXES = "search.popup.gateway.prefixes";
+        @NonNls
+        public static final String SEARCH_POPUP_GATEWAY_PREFIXES_TITLE = "search.popup.gateway.prefixes.title";
+        @NonNls
+        public static final String SEARCH_POPUP_GATEWAY_PREFIXES_MESSAGE = "search.popup.gateway.prefixes.message";
 
         @NonNls
         public static final String SEARCH_PREVIEW_SELECT = "search.preview.select";

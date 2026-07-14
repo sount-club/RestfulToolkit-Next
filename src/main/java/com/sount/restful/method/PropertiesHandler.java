@@ -131,7 +131,8 @@ public class PropertiesHandler {
     }
 
     public String getContextPath() {
-        return getProperty("server.context-path");
+        String servletContextPath = getProperty("server.servlet.context-path");
+        return servletContextPath.isEmpty() ? getProperty("server.context-path") : servletContextPath;
     }
 
     String cleanPlaceholderIfExist(String value) {

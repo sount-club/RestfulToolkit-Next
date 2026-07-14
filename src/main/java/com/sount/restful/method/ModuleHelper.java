@@ -42,4 +42,9 @@ public class ModuleHelper {
         String contextPath = propertiesHandler.getContextPath();
         return SCHEME + HOST + ":" + port + contextPath;
     }
+
+    @NotNull
+    public String getContextPath() {
+        return module == null ? "" : propertiesHandler.getContextPath();
+    }
 }

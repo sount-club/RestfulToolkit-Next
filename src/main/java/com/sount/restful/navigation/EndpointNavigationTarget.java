@@ -22,10 +22,11 @@ final class EndpointNavigationTarget {
     private final VirtualFile fallbackFile;
 
     EndpointNavigationTarget(@Nullable PsiElement psiElement) {
-        this.elementPointer = psiElement != null
-                ? SmartPointerManager.getInstance(psiElement.getProject()).createSmartPsiElementPointer(psiElement)
+        Project psiProject = psiElement != null ? psiElement.getProject() : null;
+        this.project = psiProject;
+        this.elementPointer = psiElement != null && psiProject != null
+                ? SmartPointerManager.getInstance(psiProject).createSmartPsiElementPointer(psiElement)
                 : null;
-        this.project = psiElement != null ? psiElement.getProject() : null;
         PsiFile containingFile = psiElement != null ? psiElement.getContainingFile() : null;
         this.fallbackFile = containingFile != null ? containingFile.getVirtualFile() : null;
     }

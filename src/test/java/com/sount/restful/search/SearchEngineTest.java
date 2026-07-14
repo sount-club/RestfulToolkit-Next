@@ -46,6 +46,24 @@ public class SearchEngineTest extends BasePlatformTestCase {
         assertSame(item, results.get(0).item());
     }
 
+    public void testRealRequestPathMatchesEndpointPathTemplate() {
+        RestServiceItem item = createItem("GET", "/api/users/{id}", "UserController", "getUser");
+
+        List<SearchResult> results = SearchEngine.search(SearchQuery.parse("GET /api/users/123"), List.of(item));
+
+        assertEquals(1, results.size());
+        assertSame(item, results.get(0).item());
+    }
+
+    public void testOriginalPathSearchRemainsFallbackWhenTemplateDoesNotMatch() {
+        RestServiceItem item = createItem("GET", "/gateway-api/users", "UserController", "getUsers");
+
+        List<SearchResult> results = SearchEngine.search(SearchQuery.parse("/gateway-api/users"), List.of(item));
+
+        assertEquals(1, results.size());
+        assertSame(item, results.get(0).item());
+    }
+
     private RestServiceItem createItem(String methodText, String url, String className, String methodName) {
         PsiJavaFile javaFile = (PsiJavaFile) myFixture.configureByText(className + ".java", """
                 package demo;
