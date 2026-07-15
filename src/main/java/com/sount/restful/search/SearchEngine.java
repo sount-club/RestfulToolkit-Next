@@ -200,6 +200,7 @@ public final class SearchEngine {
             return null;
         }
 
+        String normalizedEndpointPath = PathTemplateMatcher.normalizePath(endpointPath);
         List<String> candidates = PathTemplateMatcher.candidates(rawPath, item.getContextPath(), options.gatewayPrefixes());
         for (int i = 0; i < candidates.size(); i++) {
             String candidate = candidates.get(i);
@@ -209,6 +210,11 @@ public final class SearchEngine {
                 matchScore -= i * 5;
                 Set<String> fields = addMatchedField(matchedFields, MatchField.PATH);
                 return new ScoreResult(methodScore + matchScore, fields);
+            }
+            String normalizedCandidate = PathTemplateMatcher.normalizePath(candidate);
+            if (normalizedEndpointPath.startsWith(normalizedCandidate)) {
+                Set<String> fields = addMatchedField(matchedFields, MatchField.PATH);
+                return new ScoreResult(methodScore + SCORE_PATH_STARTS_WITH - i * 5, fields);
             }
         }
         return null;

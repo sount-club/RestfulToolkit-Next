@@ -16,6 +16,8 @@ public class PathTemplateMatcherTest extends TestCase {
         assertTrue(PathTemplateMatcher.matches("/assets/*/detail", "/assets/image/detail"));
         assertTrue(PathTemplateMatcher.matches("/assets/**", "/assets/image/icons/logo.svg"));
         assertTrue(PathTemplateMatcher.matches("/assets/{*path}", "/assets/image/icons/logo.svg"));
+        assertTrue(PathTemplateMatcher.matches("/assets/**/detail", "/assets/image/icons/detail"));
+        assertFalse(PathTemplateMatcher.matches("/assets/**/detail", "/assets/image/icons"));
     }
 
     public void testKeepsRawPathAndAddsGatewayAndContextNormalizedCandidates() {
@@ -28,6 +30,20 @@ public class PathTemplateMatcherTest extends TestCase {
         List<String> candidates = PathTemplateMatcher.candidates("/gateway-api/users", "", List.of("/gateway"));
 
         assertEquals(List.of("/gateway-api/users"), candidates);
+    }
+
+    public void testStripsMultipleGatewayPrefixesInConfiguredOrder() {
+        List<String> candidates = PathTemplateMatcher.candidates("/gateway/api/v1/users/123", "",
+                List.of("/gateway", "/api/v1"));
+
+        assertEquals(List.of("/gateway/api/v1/users/123", "/api/v1/users/123", "/users/123"), candidates);
+    }
+
+    public void testStripsLayeredPrefixesRegardlessOfConfigurationOrder() {
+        List<String> candidates = PathTemplateMatcher.candidates("/api/user/orders/123", "",
+                List.of("/user", "/admin", "/trade", "/im", "/game", "/api"));
+
+        assertEquals(List.of("/api/user/orders/123", "/user/orders/123", "/orders/123"), candidates);
     }
 
     public void testParsesGatewayPrefixConfiguration() {

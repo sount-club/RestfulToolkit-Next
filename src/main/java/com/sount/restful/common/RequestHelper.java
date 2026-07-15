@@ -6,15 +6,17 @@ import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.*;
+import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -239,8 +241,22 @@ public class RequestHelper {
             LOG.warn("Skipping oversized HTTP response body (" + contentLength + " bytes) to avoid OOM");
             return "[Response body too large to display: " + contentLength + " bytes]";
         }
-        try {
-            String result = EntityUtils.toString(entity, UTF8);
+        try (InputStream input = entity.getContent()) {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            long totalBytes = 0;
+            int bytesRead;
+            while ((bytesRead = input.read(buffer)) != -1) {
+                totalBytes += bytesRead;
+                if (totalBytes > MAX_RESPONSE_BYTES) {
+                    LOG.warn("Skipping oversized HTTP response body (more than " + MAX_RESPONSE_BYTES + " bytes) to avoid OOM");
+                    return "[Response body too large to display: more than " + MAX_RESPONSE_BYTES + " bytes]";
+                }
+                output.write(buffer, 0, bytesRead);
+            }
+            ContentType contentType = ContentType.get(entity);
+            Charset charset = contentType != null ? contentType.getCharset() : null;
+            String result = output.toString(charset != null ? charset : UTF8);
             if (result != null && JsonUtils.isValidJson(result)) {
                 return JsonUtils.format(result);
             }

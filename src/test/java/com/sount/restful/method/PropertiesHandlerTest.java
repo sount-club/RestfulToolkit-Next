@@ -47,6 +47,13 @@ public class PropertiesHandlerTest extends BasePlatformTestCase {
         assertEquals("/current", newHandler().getContextPath());
     }
 
+    public void testYamlLookupFallsBackWhenEarlierFileDoesNotContainProperty() {
+        myFixture.configureByText("application.yml", "spring:\n  application:\n    name: demo\n");
+        myFixture.configureByText("bootstrap.yml", "server:\n  port: 9090\n");
+
+        assertEquals("9090", newHandler().getServerPort());
+    }
+
     private PropertiesHandler newHandler() {
         return new PropertiesHandler(getModule());
     }

@@ -46,7 +46,9 @@ public class GenerateUrlAction extends AbstractBaseAction {
         }
 
         CopyPasteManager.getInstance().setContents(new StringSelection(servicePath));
-        showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), editor);
+        if (editor != null) {
+            showPopupBalloon(RestfulToolkitBundle.message(RestfulToolkitBundle.Keys.ACTION_COPY_SUCCESS), editor);
+        }
     }
 
     private boolean isJaxrsRestMethod(PsiMethod psiMethod) {

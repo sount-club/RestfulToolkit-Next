@@ -94,7 +94,9 @@ public class PropertiesHandler {
                     Map<String, Object> propertiesMap = getPropertiesMapFromYamlFile(configFile);
                     if (propertiesMap != null) {
                         Object valueObj = propertiesMap.get(propertyKey);
-                        if (valueObj == null) return null;
+                        if (valueObj == null) {
+                            continue;
+                        }
 
                         if (valueObj instanceof String) {
                             value = cleanPlaceholderIfExist((String) valueObj);

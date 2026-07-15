@@ -24,11 +24,15 @@ final class PathTemplateMatcher {
 
         List<String> afterGateway = new ArrayList<>();
         afterGateway.add(normalizedRaw);
-        for (String prefix : gatewayPrefixes) {
-            String stripped = stripPrefix(normalizedRaw, prefix);
-            if (stripped != null) {
-                paths.add(stripped);
-                afterGateway.add(stripped);
+        for (int candidateIndex = 0; candidateIndex < afterGateway.size(); candidateIndex++) {
+            String candidate = afterGateway.get(candidateIndex);
+            // Apply every configured prefix to each newly discovered path. This makes
+            // layered prefixes independent of the order in which users entered them.
+            for (String prefix : gatewayPrefixes) {
+                String stripped = stripPrefix(candidate, prefix);
+                if (stripped != null && paths.add(stripped)) {
+                    afterGateway.add(stripped);
+                }
             }
         }
 
@@ -44,23 +48,30 @@ final class PathTemplateMatcher {
     static boolean matches(@NotNull String template, @NotNull String requestPath) {
         List<String> templateSegments = segments(template);
         List<String> requestSegments = segments(requestPath);
-        int templateIndex = 0;
-        int requestIndex = 0;
-        while (templateIndex < templateSegments.size()) {
-            String templateSegment = templateSegments.get(templateIndex);
-            if ("**".equals(templateSegment) || isMultiSegmentVariable(templateSegment)) {
-                return true;
-            }
-            if (requestIndex >= requestSegments.size()) {
-                return false;
-            }
-            if (!matchesSegment(templateSegment, requestSegments.get(requestIndex))) {
-                return false;
-            }
-            templateIndex++;
-            requestIndex++;
+        return matchesSegments(templateSegments, 0, requestSegments, 0);
+    }
+
+    private static boolean matchesSegments(@NotNull List<String> templateSegments, int templateIndex,
+                                           @NotNull List<String> requestSegments, int requestIndex) {
+        if (templateIndex == templateSegments.size()) {
+            return requestIndex == requestSegments.size();
         }
-        return requestIndex == requestSegments.size();
+
+        String templateSegment = templateSegments.get(templateIndex);
+        if ("**".equals(templateSegment) || isMultiSegmentVariable(templateSegment)) {
+            // A multi-segment wildcard can consume zero or more path segments, but any
+            // template segments after it must still match.
+            for (int nextRequestIndex = requestIndex; nextRequestIndex <= requestSegments.size(); nextRequestIndex++) {
+                if (matchesSegments(templateSegments, templateIndex + 1, requestSegments, nextRequestIndex)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return requestIndex < requestSegments.size()
+                && matchesSegment(templateSegment, requestSegments.get(requestIndex))
+                && matchesSegments(templateSegments, templateIndex + 1, requestSegments, requestIndex + 1);
     }
 
     static @NotNull String normalizePath(String path) {

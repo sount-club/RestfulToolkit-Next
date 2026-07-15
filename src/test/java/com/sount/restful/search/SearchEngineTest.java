@@ -64,6 +64,37 @@ public class SearchEngineTest extends BasePlatformTestCase {
         assertSame(item, results.get(0).item());
     }
 
+    public void testGatewayPrefixDoesNotStripTheEndpointPathCandidate() {
+        RestServiceItem item = createItem("GET", "/user/tryxx", "UserController", "tryxx");
+
+        List<SearchResult> results = SearchEngine.search(SearchQuery.parse("/user/user/tryxx"), List.of(item),
+                200, null, PathSearchOptions.parse("/user,/admin,/trade,/im,/game,/api"));
+
+        assertEquals(1, results.size());
+        assertSame(item, results.get(0).item());
+    }
+
+    public void testPartialPathMatchesAfterGatewayPrefixIsStripped() {
+        RestServiceItem item = createItem("GET", "/user/tryxx", "UserController", "tryxx");
+
+        List<SearchResult> results = SearchEngine.search(SearchQuery.parse("/user/user/try"), List.of(item),
+                200, null, PathSearchOptions.parse("/user"));
+
+        assertEquals(1, results.size());
+        assertSame(item, results.get(0).item());
+    }
+
+    public void testRepeatedPrefixDoesNotMatchAnUnrelatedEndpointBySuffix() {
+        RestServiceItem imItem = createItem("GET", "/im/center", "ImController", "center");
+        RestServiceItem userItem = createItem("GET", "/user/center", "UserController", "center");
+
+        List<SearchResult> results = SearchEngine.search(SearchQuery.parse("/im/im/cen"), List.of(imItem, userItem),
+                200, null, PathSearchOptions.parse("/im"));
+
+        assertEquals(1, results.size());
+        assertSame(imItem, results.get(0).item());
+    }
+
     private RestServiceItem createItem(String methodText, String url, String className, String methodName) {
         PsiJavaFile javaFile = (PsiJavaFile) myFixture.configureByText(className + ".java", """
                 package demo;
