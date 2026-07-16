@@ -211,7 +211,11 @@ public class PsiMethodHelper {
         PsiAnnotationMemberValue attributeValue = annotation.findDeclaredAttributeValue("value");
 
         if (attributeValue instanceof PsiLiteralExpression psiLiteralExpression) {
-            paramName = (String) psiLiteralExpression.getValue();
+            // getValue() returns String for string literals but Integer/Long/etc. for other
+            // literal types; coerce via toString() to avoid ClassCastException on a non-string
+            // annotation value (e.g. an erroneous numeric @RequestParam value).
+            Object literalValue = psiLiteralExpression.getValue();
+            paramName = literalValue != null ? literalValue.toString() : null;
         }
         return paramName;
     }

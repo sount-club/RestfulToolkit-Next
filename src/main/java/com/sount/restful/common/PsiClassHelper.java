@@ -35,15 +35,69 @@ public class PsiClassHelper {
 
 
     public String convertClassToJSON(String className, Project project) {
-        if (className.contains("List<")) {
-            String entityName = className.substring(className.indexOf("<") + 1, className.lastIndexOf(">"));
-            Map<String, Object> jsonMap = assembleClassToMap(entityName, project);
-            List<Map<String, Object>> jsonList = new ArrayList<>();
-            jsonList.add(jsonMap);
-            return GSON_PRETTY.toJson(jsonList);
+        if (isListType(className)) {
+            if (extractListElementType(className) == null) {
+                // Malformed/unclosed generic (e.g. "List<" without '>') — fall back to POJO
+                // instead of throwing StringIndexOutOfBoundsException.
+                return convertPojoEntityToJSON(className, project);
+            }
+            return GSON_PRETTY.toJson(createJsonValue(className, project));
         } else {
             return convertPojoEntityToJSON(className, project);
         }
+    }
+
+    private Object createJsonValue(@NotNull String typeName, @NotNull Project project) {
+        if (!isListType(typeName)) {
+            return assembleClassToMap(typeName, project);
+        }
+        String elementType = extractListElementType(typeName);
+        if (elementType == null) {
+            return assembleClassToMap(typeName, project);
+        }
+        return Collections.singletonList(createJsonValue(elementType, project));
+    }
+
+    private static boolean isListType(@NotNull String typeName) {
+        int genericStart = typeName.indexOf('<');
+        if (genericStart < 0) {
+            return false;
+        }
+        String rawType = typeName.substring(0, genericStart).trim();
+        return "List".equals(rawType) || rawType.endsWith(".List");
+    }
+
+    /**
+     * Extracts the element type of {@code List<T>} type string for JSON sample generation.
+     * Preserves nested generic arguments (e.g. {@code List<List<User>>} yields
+     * {@code List<User>}) so callers can recursively construct the sample structure.
+     * Returns {@code null} for malformed/unclosed generics so the caller can fall back
+     * instead of throwing.
+     */
+    private static @Nullable String extractListElementType(@NotNull String className) {
+        int start = className.indexOf('<');
+        int end = className.lastIndexOf('>');
+        if (start < 0 || end <= start) {
+            return null;
+        }
+        String inner = className.substring(start + 1, end).trim();
+        if (inner.isEmpty()) {
+            return null;
+        }
+        int topLevelComma = findTopLevelComma(inner);
+        String first = topLevelComma < 0 ? inner : inner.substring(0, topLevelComma).trim();
+        return first.isEmpty() ? null : first;
+    }
+
+    private static int findTopLevelComma(@NotNull String typeArgs) {
+        int depth = 0;
+        for (int i = 0; i < typeArgs.length(); i++) {
+            char c = typeArgs.charAt(i);
+            if (c == '<') depth++;
+            else if (c == '>') depth--;
+            else if (c == ',' && depth == 0) return i;
+        }
+        return -1;
     }
 
     private String convertPojoEntityToJSON(String className, Project project) {

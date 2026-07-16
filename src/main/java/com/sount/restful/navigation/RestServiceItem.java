@@ -38,6 +38,7 @@ public class RestServiceItem implements NavigationItem {
     private String cachedLocationText; // pre-computed at construction time (inside read action)
     private String cachedJavadoc;      // pre-computed at construction time
     private String cachedModuleName;   // pre-computed at construction time
+    private String cachedContextPath = ""; // pre-computed when the module is assigned
     private final String cachedPackageName;  // pre-computed at construction time
     private final String cachedDescription;    // pre-computed at construction time
     private final String cachedControllerName; // pre-computed at construction time
@@ -81,7 +82,15 @@ public class RestServiceItem implements NavigationItem {
 
     @Override
     public void navigate(boolean requestFocus) {
-        navigationTarget.navigate(requestFocus);
+        tryNavigate(requestFocus);
+    }
+
+    /**
+     * Attempts to navigate to this endpoint and reports whether IntelliJ accepted the target.
+     * Search UIs use this to avoid closing before navigation has actually started.
+     */
+    public boolean tryNavigate(boolean requestFocus) {
+        return navigationTarget.navigate(requestFocus);
     }
 
     @Override
@@ -168,8 +177,17 @@ public class RestServiceItem implements NavigationItem {
     public void setModule(Module module) {
         this.module = module;
         this.cachedModuleName = module != null ? module.getName() : "";
+        this.cachedContextPath = module != null ? new ModuleHelper(module).getContextPath() : "";
         rebuildDescriptor();
         this.cachedSearchSelectionKey = null;
+    }
+
+    /**
+     * Returns the Spring context path captured while this endpoint was indexed.
+     * Search uses the cached value so background scoring never needs a PSI read.
+     */
+    public String getContextPath() {
+        return cachedContextPath;
     }
 
     public PsiElement getPsiElement() {

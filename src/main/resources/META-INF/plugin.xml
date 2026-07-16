@@ -51,6 +51,20 @@
   </p>
     ]]></description>
 	<change-notes><![CDATA[
+        <p><strong>RestfulToolkit Next 1.1.2</strong></p>
+        <ul>
+          <li>Fixed thread-safety issues in endpoint index rebuild and navigation (AtomicInteger retryCount, removed race conditions in getter-triggered rebuild)</li>
+          <li>Improved navigation stability with fallback navigation and tryNavigate failure detection</li>
+          <li>Refactored endpoint index error handling and state tracking: EndpointResolutionException, ensureRebuildScheduled, and RebuildResult</li>
+          <li>Optimized async search execution to avoid EDT blocking and added result application callbacks</li>
+          <li>Improved user feedback on navigation failures via SearchPopupActions status messages</li>
+          <li>Fixed singleton state leak in GenerateUrlAction</li>
+          <li>Optimized SpringWebFlux resolver by replacing FileTypeIndex with keyword pre-filtering</li>
+          <li>Improved Spring placeholder parsing and JSON formatting error handling</li>
+          <li>Enhanced Kotlin endpoint resolver type-safety checks</li>
+          <li>Added synchronization protection and state copying for SearchHistory</li>
+        </ul>
+
         <p><strong>RestfulToolkit Next 1.1.1</strong></p>
         <ul>
           <li>Updated README and plugin metadata to match the current unified search popup and editor context-menu features</li>

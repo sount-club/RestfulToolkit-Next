@@ -13,6 +13,21 @@
 
 ---
 
+## 1.1.2 更新
+
+- 修复索引重建和导航中的线程安全问题（retryCount 改为 AtomicInteger、移除 getter 触发重建的竞态条件）
+- 增强导航稳定性：EndpointNavigationTarget 降级导航、RestServiceItem 增加 tryNavigate 失败检测
+- 重构端点索引错误处理与状态跟踪：引入 EndpointResolutionException、ensureRebuildScheduled 和 RebuildResult
+- 优化异步搜索背景执行，避免 EDT 阻塞，并增加搜索结果应用回调
+- 改进导航失败的用户反馈：SearchPopupActions 显示状态信息而非静默返回
+- 修复 GenerateUrlAction 中的单例状态泄漏
+- 优化 SpringWebFlux 解析器：移除低效的 FileTypeIndex 全量文件扫描，改用关键词预过滤
+- 改进 Spring 占位符解析和 JSON 格式化错误处理
+- 增强 Kotlin 端点解析器的类型安全检查
+- 为 SearchHistory 添加同步保护和状态复制机制
+
+---
+
 ## 1.1.1 更新
 
 - 修正 README 与插件发布说明中已过期的 `RestServices` 工具窗口描述，统一为当前的统一搜索窗口和编辑器右键能力
@@ -92,6 +107,23 @@
   - 模块名和接口描述
 - 当多个模块或 Controller 暴露相同 Method + Path 时，搜索结果会同时显示，副信息用于区分来源
 - 项目刚启动或 IDE 正在索引时，窗口会显示索引中状态；索引完成后会自动刷新结果和模块列表
+- 支持将真实请求路径匹配到 Spring 模板路径，例如 `/users/123` 可定位 `/users/{id}`
+- 会自动尝试剥离模块的 `server.servlet.context-path`（兼容 `server.context-path`）和可配置网关前缀，同时始终保留原始路径搜索作为兜底
+
+#### 配置网关前缀
+
+在 REST 搜索窗口的模块筛选右侧点击齿轮图标（悬停提示为“网关前缀...”），输入逗号或换行分隔的前缀，例如：
+
+```text
+/gateway, /api
+```
+
+为避免窗口层级遮挡，点击齿轮后搜索窗口会暂时关闭并打开配置对话框；保存或取消后会自动恢复搜索窗口、原搜索词和模块范围。
+
+多个前缀会连续剥离，且不依赖填写顺序。例如请求为 `/api/user/orders/123` 时，配置 `/user, /api` 后最终可匹配 `/orders/{id}`。
+剥离后的路径同样支持路径前缀搜索，例如配置 `/user` 后，输入 `/user/user/try` 可匹配 `/user/tryxx`；不会因相同结尾误匹配其他业务前缀下的接口。
+
+对请求 `/gateway/app/users/123`，若模块 context-path 为 `/app`，搜索会依次尝试原始路径、剥离网关后的路径和 `/users/123`。
 
 ### 2. 在接口方法上使用右键菜单
 

@@ -215,12 +215,18 @@ final class SpringKotlinEndpointResolver {
 
     private List<String> parseArgumentValues(KtExpression argumentExpression) {
         List<String> values = new ArrayList<>();
-        if (argumentExpression.getText().startsWith("arrayOf")) {
-            for (KtValueArgument pathValueArgument : ((KtCallExpression) argumentExpression).getValueArguments()) {
+        // Guard casts with instanceof: getText()-based prefix checks are not a reliable
+        // indicator of the PSI node type, so an unwrapped/dot-qualified expression that
+        // merely starts with "arrayOf" or "[" would otherwise throw ClassCastException and
+        // silently drop the whole controller's endpoints (caught upstream).
+        if (argumentExpression instanceof KtCallExpression callExpression
+                && argumentExpression.getText().startsWith("arrayOf")) {
+            for (KtValueArgument pathValueArgument : callExpression.getValueArguments()) {
                 values.add(pathValueArgument.getText().replace("\"", ""));
             }
-        } else if (argumentExpression.getText().startsWith("[")) {
-            for (KtExpression ktExpression : ((KtCollectionLiteralExpression) argumentExpression).getInnerExpressions()) {
+        } else if (argumentExpression instanceof KtCollectionLiteralExpression collectionLiteral
+                && argumentExpression.getText().startsWith("[")) {
+            for (KtExpression ktExpression : collectionLiteral.getInnerExpressions()) {
                 values.add(ktExpression.getText().replace("\"", ""));
             }
         } else {

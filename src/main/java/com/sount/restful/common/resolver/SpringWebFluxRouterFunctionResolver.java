@@ -1,22 +1,18 @@
 package com.sount.restful.common.resolver;
 
-import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.JavaRecursiveElementVisitor;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiExpression;
 import com.intellij.psi.PsiExpressionList;
-import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiLiteralExpression;
-import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiMethodCallExpression;
 import com.intellij.psi.PsiMethodReferenceExpression;
-import com.intellij.psi.search.FileTypeIndex;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.psi.search.PsiSearchHelper;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.method.RequestPath;
 import com.sount.restful.navigation.RestServiceItem;
@@ -24,8 +20,9 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 final class SpringWebFluxRouterFunctionResolver {
     private final SpringResolver owner;
@@ -37,15 +34,11 @@ final class SpringWebFluxRouterFunctionResolver {
     @NotNull
     List<RestServiceItem> collect(@NotNull Project project, @NotNull GlobalSearchScope scope) {
         List<RestServiceItem> items = new ArrayList<>();
-        Collection<VirtualFile> javaFiles = FileTypeIndex.getFiles(JavaFileType.INSTANCE, scope);
-        PsiManager psiManager = PsiManager.getInstance(project);
+        Set<PsiJavaFile> candidateFiles = findCandidateFiles(project, scope);
 
-        for (VirtualFile javaFile : javaFiles) {
+        for (PsiJavaFile psiJavaFile : candidateFiles) {
             try {
-                PsiFile psiFile = psiManager.findFile(javaFile);
-                if (psiFile instanceof PsiJavaFile psiJavaFile) {
-                    psiJavaFile.accept(new RouterFunctionVisitor(items));
-                }
+                psiJavaFile.accept(new RouterFunctionVisitor(items));
             } catch (ProcessCanceledException e) {
                 throw e;
             } catch (Throwable e) {
@@ -54,6 +47,32 @@ final class SpringWebFluxRouterFunctionResolver {
         }
 
         return items;
+    }
+
+    private static @NotNull Set<PsiJavaFile> findCandidateFiles(@NotNull Project project,
+                                                                 @NotNull GlobalSearchScope scope) {
+        Set<PsiJavaFile> candidates = new LinkedHashSet<>();
+        PsiSearchHelper searchHelper = PsiSearchHelper.getInstance(project);
+        // A router can be declared through a static import or a RouterFunction-returning
+        // bean, so searching only the fluent method names misses otherwise valid files.
+        collectFilesContaining(searchHelper, "RouterFunction", scope, candidates);
+        collectFilesContaining(searchHelper, "RouterFunctions", scope, candidates);
+        collectFilesContaining(searchHelper, "route", scope, candidates);
+        collectFilesContaining(searchHelper, "andRoute", scope, candidates);
+        collectFilesContaining(searchHelper, "nest", scope, candidates);
+        return candidates;
+    }
+
+    private static void collectFilesContaining(@NotNull PsiSearchHelper searchHelper,
+                                               @NotNull String word,
+                                               @NotNull GlobalSearchScope scope,
+                                               @NotNull Set<PsiJavaFile> candidates) {
+        searchHelper.processAllFilesWithWord(word, scope, psiFile -> {
+            if (psiFile instanceof PsiJavaFile javaFile) {
+                candidates.add(javaFile);
+            }
+            return true;
+        }, true);
     }
 
     private final class RouterFunctionVisitor extends JavaRecursiveElementVisitor {

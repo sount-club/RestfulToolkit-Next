@@ -1,9 +1,13 @@
 package com.sount.restful.search;
 
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.icons.AllIcons;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.popup.JBPopup;
 import com.intellij.openapi.ui.popup.JBPopupFactory;
 import com.intellij.openapi.ui.popup.JBPopupListener;
@@ -31,6 +35,8 @@ import java.awt.event.MouseEvent;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Entry point for the unified REST endpoint search popup.
@@ -53,6 +59,7 @@ public final class UnifiedSearchPopup {
 
     public static void show(@NotNull Project project, @Nullable String initialText, @Nullable Module currentModule) {
         EndpointIndex index = EndpointIndex.getInstance(project);
+        index.ensureRebuildScheduled();
         SearchHistory history = SearchHistory.getInstance(project);
         PropertiesComponent props = PropertiesComponent.getInstance(project);
 
@@ -76,6 +83,22 @@ public final class UnifiedSearchPopup {
 
         Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD);
         SearchController.UpdateGuard updateGuard = new SearchController.UpdateGuard();
+        AtomicBoolean navigateWhenResultsArrive = new AtomicBoolean(false);
+        AtomicReference<JBPopup> popupRef = new AtomicReference<>();
+
+        Runnable navigatePendingSelection = () -> {
+            if (!navigateWhenResultsArrive.get()) {
+                return;
+            }
+            JBPopup activePopup = popupRef.get();
+            if (activePopup != null && resultList.getSelectedValue() != null) {
+                navigateWhenResultsArrive.set(false);
+                SearchPopupActions.navigateToSelected(resultList, activePopup, history,
+                        index, components.statusLabel);
+            } else if (index.isReady()) {
+                navigateWhenResultsArrive.set(false);
+            }
+        };
 
         Runnable runSearch = () -> {
             String text = searchField.getText();
@@ -89,13 +112,12 @@ public final class UnifiedSearchPopup {
                     history.getSelectedEndpointKey(text),
                     history.getSelectedIndex(text),
                     history.getFirstVisibleIndex(text),
-                    history.getScrollY(text));
+                    history.getScrollY(text), navigatePendingSelection);
         };
         Runnable doSearch = () -> {
             history.recordQuery(searchField.getText());
             runSearch.run();
         };
-
         JBPopup popup = JBPopupFactory.getInstance()
                 .createComponentPopupBuilder(components.mainPanel, searchField.getTextEditor())
                 .setTitle(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_TITLE))
@@ -105,6 +127,29 @@ public final class UnifiedSearchPopup {
                 .setCancelOnWindowDeactivation(true)
                 .setMinSize(JBUI.size(600, 350))
                 .createPopup();
+        popupRef.set(popup);
+        components.gatewayPrefixesButton.addActionListener(e -> {
+            String queryToRestore = searchField.getText();
+            popup.cancel();
+            ApplicationManager.getApplication().invokeLater(() -> {
+                configureGatewayPrefixes(project, props);
+                show(project, queryToRestore, currentModule);
+            }, ModalityState.any());
+        });
+
+        Runnable navigateOrQueue = () -> {
+            SearchPopupActions.NavigationResult result = SearchPopupActions.navigateToSelected(
+                    resultList, popup, history, index, components.statusLabel);
+            if (result != SearchPopupActions.NavigationResult.NAVIGATED) {
+                navigateWhenResultsArrive.set(true);
+                if (result == SearchPopupActions.NavigationResult.NO_SELECTION) {
+                    index.ensureRebuildScheduled();
+                    components.statusLabel.setText(index.isReady()
+                            ? RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_WAITING_RESULTS)
+                            : RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_INDEXING));
+                }
+            }
+        };
 
         Runnable indexListener = () -> SwingUtilities.invokeLater(() -> {
             SearchController.refreshModuleFilter(components.moduleCombo, index.getItems(),
@@ -165,17 +210,18 @@ public final class UnifiedSearchPopup {
         });
 
         // Keyboard & mouse events
-        SearchPopupActions.installResultListKeyAdapter(resultList, popup, history);
+        SearchPopupActions.installResultListKeyAdapter(resultList);
         resultList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) {
-                    SearchPopupActions.navigateToSelected(resultList, popup, history);
+                    navigateOrQueue.run();
                 }
             }
         });
         SearchPopupActions.installSearchFieldNavigation(searchField, resultList);
-        SearchPopupActions.installSearchFieldKeyAdapter(searchField, resultList, popup, history);
+        SearchPopupActions.installSearchFieldKeyAdapter(searchField, resultList, popup);
+        SearchPopupActions.installEnterAction(components.mainPanel, navigateOrQueue);
 
         showPopup(project, popup);
 
@@ -230,6 +276,11 @@ public final class UnifiedSearchPopup {
         String savedModule = props.getValue(SELECTED_MODULE_KEY);
         SearchController.refreshModuleFilter(moduleCombo, index.getItems(), currentModule, savedModule);
         moduleFilterPanel.add(moduleCombo);
+        JButton gatewayPrefixesButton = new JButton(AllIcons.General.Settings);
+        gatewayPrefixesButton.setToolTipText(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_GATEWAY_PREFIXES));
+        gatewayPrefixesButton.setMargin(JBUI.emptyInsets());
+        gatewayPrefixesButton.setPreferredSize(JBUI.size(24, 24));
+        moduleFilterPanel.add(gatewayPrefixesButton);
 
         JLabel hintLabel = new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_KEYBOARD_HINT));
         hintLabel.setFont(hintLabel.getFont().deriveFont(Font.PLAIN, hintLabel.getFont().getSize() - 2f));
@@ -284,7 +335,7 @@ public final class UnifiedSearchPopup {
         mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
         return new PopupComponents(mainPanel, methodGroup, methodButtons, moduleCombo,
-                statusLabel, selectionLabel, searchAllModulesBtn);
+                statusLabel, selectionLabel, searchAllModulesBtn, gatewayPrefixesButton);
     }
 
     private record PopupComponents(
@@ -294,8 +345,49 @@ public final class UnifiedSearchPopup {
             @NotNull ComboBox<String> moduleCombo,
             @NotNull JLabel statusLabel,
             @NotNull JLabel selectionLabel,
-            @NotNull JButton searchAllModulesBtn
+            @NotNull JButton searchAllModulesBtn,
+            @NotNull JButton gatewayPrefixesButton
     ) {
+    }
+
+    private static void configureGatewayPrefixes(@NotNull Project project, @NotNull PropertiesComponent props) {
+        GatewayPrefixesDialog dialog = new GatewayPrefixesDialog(project,
+                props.getValue(PathSearchOptions.GATEWAY_PREFIXES_KEY, ""));
+        if (!dialog.showAndGet()) {
+            return;
+        }
+        props.setValue(PathSearchOptions.GATEWAY_PREFIXES_KEY, dialog.value().trim(), "");
+    }
+
+    private static final class GatewayPrefixesDialog extends DialogWrapper {
+        private final JTextArea prefixesArea;
+
+        private GatewayPrefixesDialog(@NotNull Project project, @NotNull String initialValue) {
+            super(project, true);
+            prefixesArea = new JTextArea(initialValue, 4, 36);
+            prefixesArea.setLineWrap(true);
+            prefixesArea.setWrapStyleWord(true);
+            setTitle(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_GATEWAY_PREFIXES_TITLE));
+            init();
+        }
+
+        @Override
+        protected @Nullable JComponent createCenterPanel() {
+            JPanel panel = new JPanel(new BorderLayout(0, JBUI.scale(6)));
+            panel.add(new JLabel(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_GATEWAY_PREFIXES_MESSAGE)),
+                    BorderLayout.NORTH);
+            panel.add(ScrollPaneFactory.createScrollPane(prefixesArea), BorderLayout.CENTER);
+            return panel;
+        }
+
+        @Override
+        public @Nullable JComponent getPreferredFocusedComponent() {
+            return prefixesArea;
+        }
+
+        private @NotNull String value() {
+            return prefixesArea.getText();
+        }
     }
 
     private static void showPopup(@NotNull Project project, @NotNull JBPopup popup) {

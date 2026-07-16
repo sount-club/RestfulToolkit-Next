@@ -26,7 +26,7 @@ public enum JaxrsHttpMethodAnnotation {
     }
 
     public String getShortName() {
-        return qualifiedName.substring(qualifiedName.lastIndexOf(".") - 1);
+        return qualifiedName.substring(qualifiedName.lastIndexOf(".") + 1);
     }
 
 }

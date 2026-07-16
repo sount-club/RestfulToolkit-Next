@@ -37,6 +37,13 @@ public final class SearchEngine {
     public static @NotNull List<SearchResult> search(@Nullable SearchQuery query, @NotNull List<RestServiceItem> items,
                                                       int maxResults,
                                                       @Nullable Function<RestServiceItem, Integer> useCountLookup) {
+        return search(query, items, maxResults, useCountLookup, PathSearchOptions.EMPTY);
+    }
+
+    public static @NotNull List<SearchResult> search(@Nullable SearchQuery query, @NotNull List<RestServiceItem> items,
+                                                      int maxResults,
+                                                      @Nullable Function<RestServiceItem, Integer> useCountLookup,
+                                                      @NotNull PathSearchOptions pathSearchOptions) {
         if (query == null || query.isEmpty()) {
             return items.stream()
                     .map(item -> new SearchResult(item, 0, null))
@@ -55,7 +62,7 @@ public final class SearchEngine {
         // Top-N with min-heap: avoid sorting the full result list
         PriorityQueue<SearchResult> topN = new PriorityQueue<>(maxResults + 1);
         for (RestServiceItem item : items) {
-            ScoreResult sr = scoreItem(query, item, lowerTokens, useCountLookup);
+            ScoreResult sr = scoreItem(query, item, lowerTokens, useCountLookup, pathSearchOptions);
             if (sr.score > 0) {
                 topN.add(new SearchResult(item, sr.score, null, sr.matchedFields));
                 if (topN.size() > maxResults) {
@@ -78,7 +85,8 @@ public final class SearchEngine {
 
     private static @NotNull ScoreResult scoreItem(@NotNull SearchQuery query, @NotNull RestServiceItem item,
                                                    @NotNull List<String> lowerTokens,
-                                                   @Nullable Function<RestServiceItem, Integer> useCountLookup) {
+                                                   @Nullable Function<RestServiceItem, Integer> useCountLookup,
+                                                   @NotNull PathSearchOptions pathSearchOptions) {
         int score = 0;
         Set<String> matchedFields = null; // lazy init
 
@@ -89,6 +97,11 @@ public final class SearchEngine {
             }
             score += SCORE_HTTP_METHOD_EXACT;
             matchedFields = addMatchedField(matchedFields, MatchField.HTTP_METHOD);
+        }
+
+        ScoreResult pathMatch = scorePathQuery(query, item, pathSearchOptions, score, matchedFields);
+        if (pathMatch != null) {
+            return addUseCountBonus(pathMatch, item, useCountLookup);
         }
 
         if (lowerTokens.isEmpty()) {
@@ -170,13 +183,50 @@ public final class SearchEngine {
             }
         }
 
-        // Use count bonus
-        if (useCountLookup != null) {
-            int useCount = useCountLookup.apply(item);
-            score += Math.min(useCount, MAX_USE_COUNT_BONUS);
+        return addUseCountBonus(new ScoreResult(score,
+                matchedFields != null ? matchedFields : Collections.emptySet()), item, useCountLookup);
+    }
+
+    /** Returns null for regular text queries so their existing scoring behavior is unchanged. */
+    private static @Nullable ScoreResult scorePathQuery(@NotNull SearchQuery query, @NotNull RestServiceItem item,
+                                                        @NotNull PathSearchOptions options, int methodScore,
+                                                        @Nullable Set<String> matchedFields) {
+        if (query.tokens().size() != 1 || !query.tokens().get(0).startsWith("/")) {
+            return null;
+        }
+        String rawPath = query.tokens().get(0);
+        String endpointPath = item.getUrl();
+        if (endpointPath == null || endpointPath.isBlank()) {
+            return null;
         }
 
-        return new ScoreResult(score, matchedFields != null ? matchedFields : Collections.emptySet());
+        String normalizedEndpointPath = PathTemplateMatcher.normalizePath(endpointPath);
+        List<String> candidates = PathTemplateMatcher.candidates(rawPath, item.getContextPath(), options.gatewayPrefixes());
+        for (int i = 0; i < candidates.size(); i++) {
+            String candidate = candidates.get(i);
+            if (PathTemplateMatcher.matches(endpointPath, candidate)) {
+                int matchScore = endpointPath.equalsIgnoreCase(candidate) ? SCORE_PATH_EXACT : SCORE_PATH_STARTS_WITH;
+                // Prefer the untouched request path over a normalized variant, but keep both usable.
+                matchScore -= i * 5;
+                Set<String> fields = addMatchedField(matchedFields, MatchField.PATH);
+                return new ScoreResult(methodScore + matchScore, fields);
+            }
+            String normalizedCandidate = PathTemplateMatcher.normalizePath(candidate);
+            if (normalizedEndpointPath.startsWith(normalizedCandidate)) {
+                Set<String> fields = addMatchedField(matchedFields, MatchField.PATH);
+                return new ScoreResult(methodScore + SCORE_PATH_STARTS_WITH - i * 5, fields);
+            }
+        }
+        return null;
+    }
+
+    private static @NotNull ScoreResult addUseCountBonus(@NotNull ScoreResult result, @NotNull RestServiceItem item,
+                                                         @Nullable Function<RestServiceItem, Integer> useCountLookup) {
+        if (result.score <= 0 || useCountLookup == null) {
+            return result;
+        }
+        int useCount = useCountLookup.apply(item);
+        return new ScoreResult(result.score + Math.min(useCount, MAX_USE_COUNT_BONUS), result.matchedFields);
     }
 
     private static Set<String> addMatchedField(@Nullable Set<String> set, String field) {

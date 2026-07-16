@@ -40,21 +40,29 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         return FALLBACK_INSTANCES.computeIfAbsent(project, ignored -> new SearchHistory());
     }
 
+    /**
+     * Returns a defensive deep copy of the current state for platform serialization.
+     * <p>
+     * {@code PersistentStateComponent.getState()} may be invoked by the platform on a
+     * background serialization thread while UI handlers (or the background search path)
+     * mutate {@code myState}. Returning a snapshot copy under the instance lock keeps the
+     * serialized state consistent and avoids {@link ConcurrentModificationException}.
+     */
     @Override
-    public @Nullable SearchHistory.State getState() {
-        return myState;
+    public synchronized @Nullable SearchHistory.State getState() {
+        return copyState(myState);
     }
 
     @Override
-    public void loadState(@NotNull SearchHistory.State state) {
-        // PersistentStateComponent.loadState() is called on the EDT during project loading,
-        // consistent with all other access to myState from UI event handlers.
+    public synchronized void loadState(@NotNull SearchHistory.State state) {
+        // PersistentStateComponent.loadState() is called on the EDT during project loading.
+        // All other access to myState is synchronized on this instance for thread safety.
         myState = state;
         ensureState();
         pruneState();
     }
 
-    public void recordAccess(@NotNull RestServiceItem item) {
+    public synchronized void recordAccess(@NotNull RestServiceItem item) {
         ensureState();
         String key = item.getEndpointKey();
         myState.accessTimes.put(key, System.currentTimeMillis());
@@ -62,17 +70,17 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         recordUse(item);
     }
 
-    public void recordUse(@NotNull RestServiceItem item) {
+    public synchronized void recordUse(@NotNull RestServiceItem item) {
         ensureState();
         myState.useCountByEndpoint.merge(item.getEndpointKey(), 1, Integer::sum);
         pruneMap(myState.useCountByEndpoint);
     }
 
-    public int getUseCount(@NotNull RestServiceItem item) {
+    public synchronized int getUseCount(@NotNull RestServiceItem item) {
         return myState.useCountByEndpoint.getOrDefault(item.getEndpointKey(), 0);
     }
 
-    public void recordQuery(@NotNull String query) {
+    public synchronized void recordQuery(@NotNull String query) {
         ensureState();
         if (query.isBlank()) return;
         myState.recentQueries.remove(query);
@@ -82,7 +90,7 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         }
     }
 
-    public void recordSelectedEndpoint(@NotNull String query, @NotNull RestServiceItem item) {
+    public synchronized void recordSelectedEndpoint(@NotNull String query, @NotNull RestServiceItem item) {
         ensureState();
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return;
@@ -90,13 +98,13 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         pruneMap(myState.selectedEndpointsByQuery);
     }
 
-    public @Nullable String getSelectedEndpointKey(@NotNull String query) {
+    public synchronized @Nullable String getSelectedEndpointKey(@NotNull String query) {
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.selectedEndpointsByQuery.get(normalizedQuery);
     }
 
-    public void recordWindowState(@NotNull String query, int selectedIndex, int firstVisibleIndex, int scrollY) {
+    public synchronized void recordWindowState(@NotNull String query, int selectedIndex, int firstVisibleIndex, int scrollY) {
         ensureState();
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return;
@@ -114,30 +122,30 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
         }
     }
 
-    public @Nullable Integer getSelectedIndex(@NotNull String query) {
+    public synchronized @Nullable Integer getSelectedIndex(@NotNull String query) {
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.selectedIndexByQuery.get(normalizedQuery);
     }
 
-    public @Nullable Integer getFirstVisibleIndex(@NotNull String query) {
+    public synchronized @Nullable Integer getFirstVisibleIndex(@NotNull String query) {
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.firstVisibleIndexByQuery.get(normalizedQuery);
     }
 
-    public @Nullable Integer getScrollY(@NotNull String query) {
+    public synchronized @Nullable Integer getScrollY(@NotNull String query) {
         String normalizedQuery = normalizeQuery(query);
         if (normalizedQuery.isEmpty()) return null;
         return myState.scrollYByQuery.get(normalizedQuery);
     }
 
-    public long getLastAccessTime(@NotNull RestServiceItem item) {
+    public synchronized long getLastAccessTime(@NotNull RestServiceItem item) {
         return myState.accessTimes.getOrDefault(item.getEndpointKey(), 0L);
     }
 
-    public @NotNull List<String> getRecentQueries() {
-        return Collections.unmodifiableList(myState.recentQueries);
+    public synchronized @NotNull List<String> getRecentQueries() {
+        return Collections.unmodifiableList(new ArrayList<>(myState.recentQueries));
     }
 
     private static @NotNull String normalizeQuery(@NotNull String query) {
@@ -183,5 +191,18 @@ public final class SearchHistory implements PersistentStateComponent<SearchHisto
             iterator.next();
             iterator.remove();
         }
+    }
+
+    private static State copyState(@NotNull State source) {
+        State copy = new State();
+        copy.recentQueries = new ArrayList<>(source.recentQueries);
+        copy.favoriteEndpoints = new ArrayList<>(source.favoriteEndpoints);
+        copy.accessTimes = new LinkedHashMap<>(source.accessTimes);
+        copy.selectedEndpointsByQuery = new LinkedHashMap<>(source.selectedEndpointsByQuery);
+        copy.selectedIndexByQuery = new LinkedHashMap<>(source.selectedIndexByQuery);
+        copy.firstVisibleIndexByQuery = new LinkedHashMap<>(source.firstVisibleIndexByQuery);
+        copy.scrollYByQuery = new LinkedHashMap<>(source.scrollYByQuery);
+        copy.useCountByEndpoint = new LinkedHashMap<>(source.useCountByEndpoint);
+        return copy;
     }
 }

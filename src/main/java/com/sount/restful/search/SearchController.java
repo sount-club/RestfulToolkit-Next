@@ -1,7 +1,11 @@
 package com.sount.restful.search;
 
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.application.ModalityState;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.ui.components.JBList;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.sount.restful.method.HttpMethod;
 import com.sount.restful.navigation.RestServiceItem;
 import com.sount.restful.utils.RestfulToolkitBundle;
@@ -19,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * for the unified search popup.
  */
 final class SearchController {
+    private static final Logger LOG = Logger.getInstance(SearchController.class);
 
     private SearchController() {
     }
@@ -38,63 +43,116 @@ final class SearchController {
                               @Nullable Integer preferredSelectionIndex,
                               @Nullable Integer preferredFirstVisibleIndex,
                               @Nullable Integer preferredScrollY) {
+        performSearch(text, index, model, resultList, statusLabel, searchAllModulesBtn,
+                filterModule, renderer, updateGuard, methodFilter, preferredEndpointKey,
+                preferredSelectionIndex, preferredFirstVisibleIndex, preferredScrollY, null);
+    }
+
+    static void performSearch(@NotNull String text, @NotNull EndpointIndex index,
+                              @NotNull DefaultListModel<SearchResult> model,
+                              @NotNull JBList<SearchResult> resultList,
+                              @NotNull JLabel statusLabel,
+                              @NotNull JButton searchAllModulesBtn,
+                              @Nullable Module filterModule,
+                              @NotNull UnifiedSearchRenderer renderer,
+                              @NotNull UpdateGuard updateGuard,
+                              @Nullable HttpMethod methodFilter,
+                              @Nullable String preferredEndpointKey,
+                              @Nullable Integer preferredSelectionIndex,
+                              @Nullable Integer preferredFirstVisibleIndex,
+                              @Nullable Integer preferredScrollY,
+                              @Nullable Runnable resultsApplied) {
+        // Capture inputs on the EDT (a volatile list snapshot + parsed query), then run the
+        // scoring pass on a background thread so large endpoint sets don't block the EDT.
+        // Result application to the list model happens back on the EDT under UpdateGuard,
+        // which discards stale/out-of-order results.
         long updateGeneration = updateGuard.nextGeneration();
-        List<RestServiceItem> allItems = index.getItems();
-        boolean indexReady = index.isReady();
-        List<RestServiceItem> searchableItems = allItems;
-        if (filterModule != null) {
-            List<RestServiceItem> filtered = new ArrayList<>();
-            for (RestServiceItem item : allItems) {
-                if (filterModule.equals(item.getModule())) {
-                    filtered.add(item);
-                }
-            }
-            searchableItems = filtered;
-        }
-        final int totalCount = searchableItems.size();
-        SearchQuery query = SearchQuery.parse(text);
+        final List<RestServiceItem> allItems = index.getItems();
+        final boolean indexReady = index.isReady();
 
+        final SearchQuery query;
+        SearchQuery parsed = SearchQuery.parse(text);
         // If method filter is set but query didn't parse it, combine
-        if (methodFilter != null && query.methodFilter() == null) {
-            query = new SearchQuery(query.rawInput(), methodFilter, query.urlPattern(),
-                    query.classNamePattern(), query.methodNamePattern(), query.tokens());
-        }
-
-        SearchHistory history = SearchHistory.getInstance(index.getProject());
-        List<SearchResult> results;
-
-        // Empty query: show recently accessed endpoints (top 20)
-        if (text.isEmpty() && methodFilter == null) {
-            results = buildRecentResults(searchableItems, history::getLastAccessTime);
+        if (methodFilter != null && parsed.methodFilter() == null) {
+            query = new SearchQuery(parsed.rawInput(), methodFilter, parsed.urlPattern(),
+                    parsed.classNamePattern(), parsed.methodNamePattern(), parsed.tokens());
         } else {
-            results = SearchEngine.search(query, searchableItems, 200, history::getUseCount);
+            query = parsed;
         }
 
-        // Set highlight tokens for renderer
-        renderer.setHighlightTokens(query.tokens());
+        final SearchHistory history = SearchHistory.getInstance(index.getProject());
+        final PathSearchOptions pathSearchOptions = PathSearchOptions.forProject(index.getProject());
+        final boolean emptyQuery = text.isEmpty() && methodFilter == null;
+        final List<String> highlightTokens = query.tokens();
 
-        SwingUtilities.invokeLater(() -> runIfLatest(updateGuard, updateGeneration, () -> {
-            model.clear();
-            for (SearchResult result : results) {
-                model.addElement(result);
-            }
-            if (!results.isEmpty()) {
-                int selectionIndex = SearchPopupModel.findSelectionIndex(results, preferredEndpointKey, preferredSelectionIndex);
-                SearchPopupActions.selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
-            }
+        ReadAction.nonBlocking(() -> {
+                List<RestServiceItem> searchableItems = allItems;
+                if (filterModule != null) {
+                    List<RestServiceItem> filtered = new ArrayList<>();
+                    for (RestServiceItem item : allItems) {
+                        if (filterModule.equals(item.getModule())) {
+                            filtered.add(item);
+                        }
+                    }
+                    searchableItems = filtered;
+                }
+                final int totalCount = searchableItems.size();
 
-            statusLabel.setText(SearchPopupModel.buildStatusText(text, results.size(), totalCount, indexReady,
-                    filterModule, methodFilter));
+                // Empty query: show recently accessed endpoints (top 20)
+                List<SearchResult> results;
+                if (emptyQuery) {
+                    results = buildRecentResults(searchableItems, history::getLastAccessTime);
+                } else {
+                    results = SearchEngine.search(query, searchableItems, 200, history::getUseCount, pathSearchOptions);
+                }
 
-            // Show "搜索全部模块" button when no results and a module filter is active
-            searchAllModulesBtn.setVisible(results.isEmpty() && filterModule != null && !text.isEmpty());
-        }));
+                return new SearchComputation(results, totalCount);
+            })
+            .expireWith(index.getProject())
+            .finishOnUiThread(ModalityState.any(), computation -> runIfLatest(updateGuard, updateGeneration, () -> {
+                    // Set highlight tokens for renderer
+                    renderer.setHighlightTokens(highlightTokens);
+
+                    model.clear();
+                    for (SearchResult result : computation.results()) {
+                        model.addElement(result);
+                    }
+                    if (!computation.results().isEmpty()) {
+                        int selectionIndex = SearchPopupModel.findSelectionIndex(computation.results(), preferredEndpointKey, preferredSelectionIndex);
+                        SearchPopupActions.selectAndRevealIndex(resultList, selectionIndex, preferredFirstVisibleIndex, preferredScrollY);
+                    }
+
+                    statusLabel.setText(SearchPopupModel.buildStatusText(text, computation.results().size(), computation.totalCount(), indexReady,
+                            filterModule, methodFilter));
+
+                    // Show "搜索全部模块" button when no results and a module filter is active
+                    searchAllModulesBtn.setVisible(computation.results().isEmpty() && filterModule != null && !text.isEmpty());
+                    if (resultsApplied != null) {
+                        resultsApplied.run();
+                    }
+                }))
+            .submit(AppExecutorUtil.getAppExecutorService())
+            .onError(error -> {
+                if (index.getProject().isDisposed()) {
+                    return;
+                }
+                LOG.warn("REST endpoint search failed for query: " + text, error);
+                SwingUtilities.invokeLater(() -> runIfLatest(updateGuard, updateGeneration, () -> {
+                    if (index.getProject().isDisposed()) {
+                        return;
+                    }
+                    statusLabel.setText(RestfulToolkitBundle.message(Keys.SEARCH_POPUP_STATUS_SEARCH_FAILED));
+                }));
+            });
     }
 
     static void runIfLatest(@NotNull UpdateGuard updateGuard, long generation, @NotNull Runnable update) {
         if (updateGuard.isLatest(generation)) {
             update.run();
         }
+    }
+
+    private record SearchComputation(@NotNull List<SearchResult> results, int totalCount) {
     }
 
     static final class UpdateGuard {

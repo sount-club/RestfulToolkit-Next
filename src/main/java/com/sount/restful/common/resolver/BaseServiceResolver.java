@@ -102,11 +102,8 @@ public abstract class BaseServiceResolver implements ServiceResolver {
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (Throwable e) {
-            // Handle any index inconsistency errors gracefully — return empty list.
-            // Log at debug level since this is a transient condition during indexing,
-            // and the platform may have already logged the error internally.
-            LOG.debug("Failed to resolve REST endpoints (index may be inconsistent)", e);
-            itemList = new ArrayList<>();
+            throw new EndpointResolutionException(
+                    "Failed to resolve REST endpoints while project indexes are changing", e);
         }
 
         return itemList;

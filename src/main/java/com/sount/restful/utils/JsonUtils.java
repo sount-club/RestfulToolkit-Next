@@ -17,9 +17,17 @@ public class JsonUtils {
     }
 
     public static String format(String str) {
-        JsonElement parse = JsonParser.parseString(str);
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        return gson.toJson(parse);
+        if (str == null) {
+            return "";
+        }
+        try {
+            JsonElement parse = JsonParser.parseString(str);
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            return gson.toJson(parse);
+        } catch (JsonSyntaxException e) {
+            // Not valid JSON — return the original input unchanged.
+            return str;
+        }
     }
 
     private static boolean isGsonFormat(String targetStr, Class<? extends JsonElement> clazz) {

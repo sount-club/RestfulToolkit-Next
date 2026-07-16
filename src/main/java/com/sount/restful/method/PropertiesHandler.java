@@ -15,6 +15,8 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Spring Boot 配置文件读取工具。
@@ -39,6 +41,7 @@ public class PropertiesHandler {
     String placeholderPrefix = "${";
     String valueSeparator = ":";
     String placeholderSuffix = "}";
+    private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("\\$\\{([^}]*)}");
 
     String activeProfile;
 
@@ -91,7 +94,9 @@ public class PropertiesHandler {
                     Map<String, Object> propertiesMap = getPropertiesMapFromYamlFile(configFile);
                     if (propertiesMap != null) {
                         Object valueObj = propertiesMap.get(propertyKey);
-                        if (valueObj == null) return null;
+                        if (valueObj == null) {
+                            continue;
+                        }
 
                         if (valueObj instanceof String) {
                             value = cleanPlaceholderIfExist((String) valueObj);
@@ -119,8 +124,8 @@ public class PropertiesHandler {
     @NotNull
     private Properties loadPropertiesFromText(String text) {
         Properties prop = new Properties();
-        try {
-            prop.load(new StringReader(text));
+        try (StringReader reader = new StringReader(text)) {
+            prop.load(reader);
         } catch (IOException e) {
             LOG.warn("Failed to load properties text", e);
         }
@@ -128,17 +133,34 @@ public class PropertiesHandler {
     }
 
     public String getContextPath() {
-        return getProperty("server.context-path");
+        String servletContextPath = getProperty("server.servlet.context-path");
+        return servletContextPath.isEmpty() ? getProperty("server.context-path") : servletContextPath;
     }
 
-    private String cleanPlaceholderIfExist(String value) {
-        if (value != null && value.contains(placeholderPrefix) && value.contains(valueSeparator)) {
-            String[] split = value.split(valueSeparator);
-            if (split.length > 1) {
-                value = split[1].replace(placeholderSuffix, "");
-            }
+    String cleanPlaceholderIfExist(String value) {
+        if (value == null || !value.contains(placeholderPrefix)) {
+            return value;
         }
-        return value;
+        // Resolve Spring-style placeholders ${key:defaultValue} inline. The default value is
+        // everything after the FIRST colon (matching Spring's resolution), so ${a:b:c} -> "b:c".
+        // Placeholders without a default (${key}) cannot be resolved from a single source and
+        // are left intact with a warning, rather than being silently mangled.
+        Matcher matcher = PLACEHOLDER_PATTERN.matcher(value);
+        StringBuffer sb = new StringBuffer();
+        while (matcher.find()) {
+            String content = matcher.group(1);
+            int colonIndex = content.indexOf(':');
+            String replacement;
+            if (colonIndex >= 0) {
+                replacement = content.substring(colonIndex + 1);
+            } else {
+                LOG.warn("Unresolved property placeholder '" + matcher.group(0) + "' in value");
+                replacement = matcher.group(0);
+            }
+            matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     private Map<String, Object> getPropertiesMapFromYamlFile(String configFile) {

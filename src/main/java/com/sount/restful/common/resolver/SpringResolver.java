@@ -122,14 +122,8 @@ public class SpringResolver extends BaseServiceResolver {
         } catch (ProcessCanceledException e) {
             throw e;
         } catch (Throwable e) {
-            // Handle index inconsistency gracefully — return empty collection.
-            // This can happen when the stub index references a file whose stub tree is missing
-            // (e.g. index cache corrupted, concurrent file changes during indexing).
-            // Note: IntelliJ platform logs this at ERROR level internally via
-            // StubProcessingHelper.retrieveStubIdList before our catch runs, so we log at
-            // debug level here to avoid duplicate noise.
-            LOG.debug("Failed to find @" + shortName + " annotations (stub index may be inconsistent)", e);
-            return new ArrayList<>();
+            throw new EndpointResolutionException(
+                    "Failed to query @" + shortName + " annotations from the project index", e);
         }
     }
 
