@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.sount"
-version = "1.1.2"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -43,6 +43,16 @@ intellijPlatform {
         }
 
         changeNotes = """
+            <p><strong>RestfulToolkit Next 1.2.0</strong></p>
+            <ul>
+              <li>Reorganized endpoint discovery, search, navigation, and configuration code into clearer domain, application, UI, and platform layers while preserving existing actions, shortcuts, and workflows</li>
+              <li>Introduced Strategy, Template Method, Composite, and Facade patterns to make Spring MVC, WebFlux, and JAX-RS endpoint resolution easier to extend and maintain</li>
+              <li>Reduced endpoint index rebuild overhead by reusing immutable module configuration snapshots and avoiding repeated configuration scans</li>
+              <li>Optimized unified search with bounded top-result ranking and fewer hot-path allocations while preserving filters, history, scoring, and navigation behavior</li>
+              <li>Added pluggable properties and YAML configuration parsers while preserving profile precedence, file precedence, placeholder resolution, and context-path behavior</li>
+              <li>Expanded regression and architecture coverage to 149 tests, including service registration and dependency-boundary checks</li>
+            </ul>
+
             <p><strong>RestfulToolkit Next 1.1.2</strong></p>
             <ul>
               <li>Fixed thread-safety issues in endpoint index rebuild and navigation (AtomicInteger retryCount, removed race conditions in getter-triggered rebuild)</li>

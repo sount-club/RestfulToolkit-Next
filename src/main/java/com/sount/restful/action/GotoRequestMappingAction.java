@@ -9,7 +9,7 @@ import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
-import com.sount.restful.search.UnifiedSearchPopup;
+import com.sount.restful.search.ui.UnifiedSearchPopup;
 import org.jetbrains.annotations.NotNull;
 
 import java.awt.datatransfer.DataFlavor;

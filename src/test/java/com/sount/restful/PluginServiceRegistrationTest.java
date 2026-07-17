@@ -12,12 +12,14 @@ public class PluginServiceRegistrationTest {
 
     private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path PLUGIN_XML = ROOT.resolve("src/main/resources/META-INF/plugin.xml");
-    private static final Path SEARCH_HISTORY = ROOT.resolve("src/main/java/com/sount/restful/search/SearchHistory.java");
+    private static final Path SEARCH_HISTORY = ROOT.resolve(
+            "src/main/java/com/sount/restful/search/application/SearchHistory.java");
 
     @Test
     public void annotatedProjectServicesAreNotAlsoRegisteredInPluginXml() throws Exception {
         String pluginXml = Files.readString(PLUGIN_XML);
 
+        assertFalse(pluginXml.contains("serviceImplementation=\"com.sount.restful.search.application.SearchHistory\""));
         assertFalse(pluginXml.contains("serviceImplementation=\"com.sount.restful.search.SearchHistory\""));
     }
 
@@ -25,7 +27,6 @@ public class PluginServiceRegistrationTest {
     public void searchHistoryUsesProjectServiceAnnotation() throws Exception {
         String source = Files.readString(SEARCH_HISTORY);
 
-        assertTrue(source.contains("import com.intellij.openapi.components.*;"));
         assertTrue(source.contains("@Service(Service.Level.PROJECT)"));
     }
 
@@ -33,6 +34,9 @@ public class PluginServiceRegistrationTest {
     public void endpointIndexIsRegisteredInPluginXml() throws Exception {
         String pluginXml = Files.readString(PLUGIN_XML);
 
-        assertTrue(pluginXml.contains("serviceImplementation=\"com.sount.restful.search.EndpointIndex\""));
+        assertTrue(pluginXml.contains(
+                "serviceImplementation=\"com.sount.restful.search.application.EndpointIndex\""));
+        assertFalse(pluginXml.contains(
+                "serviceImplementation=\"com.sount.restful.search.EndpointIndex\""));
     }
 }

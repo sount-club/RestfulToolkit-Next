@@ -1,0 +1,90 @@
+package com.sount.restful.endpoint.resolver;
+
+
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.module.Module;
+import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.project.Project;
+import com.intellij.psi.*;
+import com.intellij.psi.impl.java.stubs.index.JavaAnnotationIndex;
+import com.intellij.psi.search.GlobalSearchScope;
+import com.sount.restful.annotations.JaxrsPathAnnotation;
+import com.sount.restful.common.jaxrs.JaxrsAnnotationHelper;
+import com.sount.restful.method.RequestPath;
+import com.sount.restful.endpoint.navigation.RestServiceItem;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
+
+public class JaxrsResolver extends AbstractEndpointResolver {
+    private static final Logger LOG = Logger.getInstance(JaxrsResolver.class);
+
+    public JaxrsResolver(Module module) {
+        this(module, new EndpointResolutionContext());
+    }
+
+    JaxrsResolver(Module module, @NotNull EndpointResolutionContext resolutionContext) {
+        super(module, resolutionContext);
+    }
+
+    public JaxrsResolver(Project project) {
+        this(project, new EndpointResolutionContext());
+    }
+
+    JaxrsResolver(Project project, @NotNull EndpointResolutionContext resolutionContext) {
+        super(project, resolutionContext);
+    }
+
+    @Override
+    protected @NotNull List<RestServiceItem> collectEndpoints(
+            @NotNull Project project,
+            @NotNull GlobalSearchScope globalSearchScope) {
+        List<RestServiceItem> itemList = new ArrayList<>();
+
+        Collection<PsiAnnotation> psiAnnotations = findAnnotationsByShortName(
+                JaxrsPathAnnotation.PATH.getShortName(), project, globalSearchScope);
+        LOG.debug("Found " + psiAnnotations.size() + " @Path annotations");
+
+        for (PsiAnnotation psiAnnotation : psiAnnotations) {
+            if (!(psiAnnotation.getParent() instanceof PsiModifierList psiModifierList)) {
+                continue;
+            }
+            PsiElement psiElement = psiModifierList.getParent();
+
+            if (!(psiElement instanceof PsiClass psiClass)) continue;
+
+            String classUriPath = JaxrsAnnotationHelper.getClassUriPath(psiClass);
+
+            for (PsiMethod psiMethod : getClassMethodsIncludingParents(psiClass)) {
+                RequestPath[] methodUriPaths = JaxrsAnnotationHelper.getRequestPaths(psiMethod);
+                if (methodUriPaths == null) {
+                    continue;
+                }
+                for (RequestPath methodUriPath : methodUriPaths) {
+                    RestServiceItem item = createRestServiceItem(psiMethod, classUriPath, methodUriPath);
+                    itemList.add(item);
+                }
+            }
+
+        }
+
+        LOG.info("JaxrsResolver found " + itemList.size() + " endpoints");
+        return itemList;
+    }
+
+    private static Collection<PsiAnnotation> findAnnotationsByShortName(
+            String shortName, Project project, GlobalSearchScope scope) {
+        try {
+            // Use JavaAnnotationIndex.getAnnotations() (non-deprecated) instead of get()
+            return JavaAnnotationIndex.getInstance().getAnnotations(shortName, project, scope);
+        } catch (ProcessCanceledException e) {
+            throw e;
+        } catch (Throwable e) {
+            throw new EndpointResolutionException(
+                    "Failed to query @" + shortName + " annotations from the project index", e);
+        }
+    }
+}
