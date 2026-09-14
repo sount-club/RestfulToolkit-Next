@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.sount"
-version = "1.2.0"
+version = "1.2.1"
 
 repositories {
     mavenCentral()
@@ -39,10 +39,16 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "261"
+            sinceBuild = "262"
         }
 
         changeNotes = """
+            <p><strong>RestfulToolkit Next 1.2.1</strong></p>
+            <ul>
+              <li>Removed the deprecated <code>DynamicBundle(String)</code> constructor usage by delegating to a shared bundle instance, keeping message lookups compatible with future platform releases</li>
+              <li>Updated the target platform to IntelliJ IDEA 2026.2, Kotlin 2.4.0, and Java/JVM target 25</li>
+            </ul>
+
             <p><strong>RestfulToolkit Next 1.2.0</strong></p>
             <ul>
               <li>Reorganized endpoint discovery, search, navigation, and configuration code into clearer domain, application, UI, and platform layers while preserving existing actions, shortcuts, and workflows</li>

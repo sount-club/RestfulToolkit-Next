@@ -8,14 +8,13 @@ import org.jetbrains.annotations.PropertyKey;
 /**
  * @author zhaow
  */
-public class RestfulToolkitBundle extends DynamicBundle {
+public final class RestfulToolkitBundle {
 
     @NonNls
     private static final String BUNDLE = "RestfulToolkitBundle";
-    private static final RestfulToolkitBundle INSTANCE = new RestfulToolkitBundle();
+    private static final DynamicBundle INSTANCE = new DynamicBundle(RestfulToolkitBundle.class, BUNDLE);
 
     private RestfulToolkitBundle() {
-        super(BUNDLE);
     }
 
     public static @Nls String message(@PropertyKey(resourceBundle = BUNDLE) String key, Object... params) {
