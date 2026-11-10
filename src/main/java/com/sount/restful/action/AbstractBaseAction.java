@@ -13,9 +13,8 @@ import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.ui.JBColor;
+import com.sount.restful.common.KotlinAsJavaBridge;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.asJava.LightClassUtil;
-import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
 import org.jetbrains.kotlin.psi.KtClassOrObject;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
 import org.jspecify.annotations.NonNull;
@@ -92,7 +91,7 @@ public abstract class AbstractBaseAction extends AnAction {
 
         KtNamedFunction ktNamedFunction = PsiTreeUtil.getParentOfType(psiElement, KtNamedFunction.class, false);
         if (ktNamedFunction != null) {
-            java.util.List<PsiMethod> psiMethods = LightClassUtilsKt.toLightMethods(ktNamedFunction);
+            java.util.List<PsiMethod> psiMethods = KotlinAsJavaBridge.toPsiMethods(ktNamedFunction);
             if (!psiMethods.isEmpty()) {
                 return psiMethods.get(0);
             }
@@ -112,8 +111,11 @@ public abstract class AbstractBaseAction extends AnAction {
         }
 
         KtClassOrObject ktClassOrObject = PsiTreeUtil.getParentOfType(psiElement, KtClassOrObject.class, false);
-        if (ktClassOrObject != null && LightClassUtil.INSTANCE.canGenerateLightClass(ktClassOrObject)) {
-            return LightClassUtilsKt.toLightClass(ktClassOrObject);
+        if (ktClassOrObject != null) {
+            PsiClass lightClass = KotlinAsJavaBridge.toPsiClass(ktClassOrObject);
+            if (lightClass != null) {
+                return lightClass;
+            }
         }
 
         return PsiTreeUtil.getParentOfType(psiElement, PsiClass.class, false);

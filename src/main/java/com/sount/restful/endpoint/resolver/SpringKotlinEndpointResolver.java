@@ -2,17 +2,17 @@ package com.sount.restful.endpoint.resolver;
 
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.project.Project;
+import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.sount.restful.annotations.PathMappingAnnotation;
 import com.sount.restful.annotations.SpringRequestMethodAnnotation;
+import com.sount.restful.common.KotlinAsJavaBridge;
 import com.sount.restful.common.spring.RequestMappingAnnotationHelper;
 import com.sount.restful.method.RequestPath;
 import com.sount.restful.endpoint.navigation.RestServiceItem;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.asJava.LightClassUtil;
-import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
 import org.jetbrains.kotlin.idea.stubindex.KotlinAnnotationsIndex;
 import org.jetbrains.kotlin.psi.*;
 
@@ -116,11 +116,9 @@ final class SpringKotlinEndpointResolver {
     private List<PsiMethod> getAllKtMethods(KtClass ktClass) {
         List<PsiMethod> methods = new ArrayList<>();
         try {
-            if (LightClassUtil.INSTANCE.canGenerateLightClass(ktClass)) {
-                var lightClass = LightClassUtilsKt.toLightClass(ktClass);
-                if (lightClass != null) {
-                    methods.addAll(owner.getClassMethodsIncludingParents(lightClass));
-                }
+            PsiClass lightClass = KotlinAsJavaBridge.toPsiClass(ktClass);
+            if (lightClass != null) {
+                methods.addAll(owner.getClassMethodsIncludingParents(lightClass));
             }
         } catch (Exception e) {
             SpringResolver.LOG.debug("Failed to get Kotlin light class methods", e);
@@ -130,7 +128,7 @@ final class SpringKotlinEndpointResolver {
 
     private PsiElement getKtMethodSourceElement(PsiMethod method) {
         try {
-            PsiElement unwrapped = LightClassUtilsKt.getUnwrapped(method);
+            PsiElement unwrapped = KotlinAsJavaBridge.unwrap(method);
             if (unwrapped instanceof KtNamedFunction) {
                 return unwrapped;
             }

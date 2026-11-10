@@ -8,7 +8,9 @@ plugins {
 }
 
 group = "com.sount"
-version = "1.2.1"
+version = "1.2.2"
+
+val localIde = file("/Applications/IntelliJ IDEA.app")
 
 repositories {
     mavenCentral()
@@ -20,7 +22,14 @@ repositories {
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        intellijIdea("2026.2")
+        // 本机装有 2026.3 时直接复用，避免大体积 IDE 压缩包下载超时；其余环境回退到远程 release。
+        if (localIde.exists()) {
+            local(localIde.absolutePath)
+        } else {
+            intellijIdea("2026.3") {
+                useInstaller.set(false)
+            }
+        }
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add plugin dependencies for compilation here:
@@ -39,10 +48,16 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "262"
+            sinceBuild = "263"
         }
 
         changeNotes = """
+            <p><strong>RestfulToolkit Next 1.2.2</strong></p>
+            <ul>
+              <li>Migrated Kotlin-to-Java PSI resolution off the deprecated legacy light-class APIs (<code>LightClassUtil</code>, <code>LightClassUtilsKt.toLightClass</code>/<code>toLightMethods</code>, KT-85385) to the Kotlin Analysis API via a shared <code>KotlinAsJavaBridge</code>, eliminating the deprecated-API warnings on 2026.3</li>
+              <li>Updated the target platform to IntelliJ IDEA 2026.3 (build 263), Kotlin 2.4.0, and Java/JVM target 25; dropped support for builds earlier than 263</li>
+            </ul>
+
             <p><strong>RestfulToolkit Next 1.2.1</strong></p>
             <ul>
               <li>Removed the deprecated <code>DynamicBundle(String)</code> constructor usage by delegating to a shared bundle instance, keeping message lookups compatible with future platform releases</li>
@@ -105,8 +120,12 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // 推荐方式：自动使用兼容当前插件设置的推荐版本
-            recommended()
+            // 本机验证直接复用已安装的 2026.3；CI/其他环境仍使用推荐版本列表。
+            if (localIde.exists()) {
+                local(localIde.resolve("Contents").absolutePath)
+            } else {
+                recommended()
+            }
         }
     }
 }

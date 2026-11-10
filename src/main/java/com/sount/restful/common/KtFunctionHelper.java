@@ -5,7 +5,6 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiMethod;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.asJava.LightClassUtilsKt;
 import org.jetbrains.kotlin.psi.KtNamedFunction;
 
 import java.util.List;
@@ -29,7 +28,7 @@ public class KtFunctionHelper extends PsiMethodHelper {
 
     protected KtFunctionHelper(@NotNull KtNamedFunction ktNamedFunction) {
         super(null);
-        List<PsiMethod> psiMethods = LightClassUtilsKt.toLightMethods(ktNamedFunction);
+        List<PsiMethod> psiMethods = KotlinAsJavaBridge.toPsiMethods(ktNamedFunction);
         if (psiMethods.isEmpty()) {
             throw new IllegalStateException("No light methods found for Kotlin function: " + ktNamedFunction.getName());
         }

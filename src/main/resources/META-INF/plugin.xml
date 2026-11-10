@@ -119,7 +119,7 @@
 	<depends>com.intellij.java</depends>
 	<depends>org.jetbrains.kotlin</depends>
 
-	<idea-version since-build="261"/>
+	<idea-version since-build="263"/>
 
 	<!-- Extensions defined by the plugin.
 		 Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
